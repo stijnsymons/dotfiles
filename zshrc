@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------------------
-# Stijn Symons dotfiles
+# Dotfiles
 #-------------------------------------------------------------------------------
 
 # Basics
@@ -38,15 +38,12 @@ eval "$(starship init zsh)"
 #-------------------------------------------------------------------------------
 
 # load autocomplete
-source /usr/local/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
+source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
 # Make Enter submit the command line straight from the menu
 bindkey -M menuselect '\r' .accept-line
 # Make Tab go straight to the menu and cycle there
 bindkey '\t' menu-select "$terminfo[kcbt]" menu-select
 bindkey -M menuselect '\t' menu-complete "$terminfo[kcbt]" reverse-menu-complete
-
-# load autosuggestions
-# source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 
 if type brew &>/dev/null; then
   FPATH=$(brew --prefix)/share/zsh-completions:$FPATH
@@ -58,7 +55,7 @@ fi
 #-------------------------------------------------------------------------------
 # Path
 #-------------------------------------------------------------------------------
-export PATH=/usr/local/bin:~/bin:/usr/local/sbin:$PATH
+export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
 
 #-------------------------------------------------------------------------------
 # Source private configuration if it exists
@@ -102,19 +99,6 @@ man() {
 }
 
 #-------------------------------------------------------------------------------
-# NVM config
-#-------------------------------------------------------------------------------
-export NVM_DIR="$HOME/.nvm"
-[ -s "/usr/local/opt/nvm/nvm.sh" ] && . "/usr/local/opt/nvm/nvm.sh"
-[ -s "/usr/local/opt/nvm/etc/bash_completion" ] && . "/usr/local/opt/nvm/etc/bash_completion"
-
-#-------------------------------------------------------------------------------
 # SSH
 #-------------------------------------------------------------------------------
 ssh-add -K ~/.ssh/id_rsa > /dev/null 2>&1
-
-# Start ssh-agent if not running
-if [ -z "$SSH_AUTH_SOCK" ] ; then
-  eval `ssh-agent -s`
-  ssh-add ~/.ssh/id_rsa
-fi
