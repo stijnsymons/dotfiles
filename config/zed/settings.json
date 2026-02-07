@@ -7,20 +7,91 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "context_servers": {
+    "mcp-server-github": {
+      "enabled": true,
+      "remote": false,
+      "settings": {}
+    }
+  },
+  "git": {
+    "inline_blame": {
+      "show_commit_summary": true
+    }
+  },
+  "terminal": {
+    "toolbar": {
+      "breadcrumbs": false
+    },
+    "cursor_shape": "bar",
+    "font_family": "FiraMono Nerd Font Mono",
+    "font_size": 14.0
+  },
+  "bottom_dock_layout": "contained",
+  "tabs": {
+    "file_icons": true,
+    "git_status": false
+  },
+  "title_bar": {
+    "show_branch_name": true
+  },
+  "search": {
+    "regex": true
+  },
+  "prettier": {
+    "allowed": false
+  },
+  "toolbar": {
+    "agent_review": true,
+    "selections_menu": true,
+    "quick_actions": true,
+    "breadcrumbs": true
+  },
+  "minimap": {
+    "show": "auto"
+  },
+  "autosave": {
+    "after_delay": {
+      "milliseconds": 1000
+    }
+  },
+  "show_wrap_guides": true,
+  "agent_ui_font_size": 14.0,
+  "buffer_font_family": ".ZedMono",
+  "edit_predictions": {
+    "mode": "eager"
+  },
+  "always_treat_brackets_as_autoclosed": true,
+  "indent_guides": {
+    "background_coloring": "indent_aware",
+  },
+  "colorize_brackets": false,
+  "show_edit_predictions": false,
+  "agent_servers": {
+    "your_agent": {
+      "type": "custom",
+      "command": "path_to_executable",
+      "args": [],
+      "env": {},
+    },
+  },
+  "debugger": {
+    "dock": "right",
+  },
   "agent": {
+    "dock": "right",
     "default_model": {
       "provider": "anthropic",
       "model": "claude-sonnet-4-5-latest"
     },
-    "favorite_models": [],
-    "model_parameters": []
+    "model_parameters": [],
   },
-  "vim_mode": true,
-  "ui_font_size": 16,
-  "buffer_font_size": 16,
+  "vim_mode": false,
+  "ui_font_size": 16.0,
+  "buffer_font_size": 14.0,
   "theme": {
-    "mode": "system",
-    "light": "One Light",
-    "dark": "One Dark"
-  }
+    "mode": "dark",
+    "light": "Ayu Light",
+    "dark": "Ayu Mirage",
+  },
 }
