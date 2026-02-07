@@ -1,0 +1,29 @@
+{
+	"auto_upgrade_last_run": null,
+	"installed_packages":
+	[
+		"Composer",
+		"Emmet",
+		"FileDiffs",
+		"Git",
+		"GitGutter",
+		"Goto Documentation",
+		"Indent XML",
+		"Javascript Beautify",
+		"JsFormat",
+		"JSHint",
+		"Package Control",
+		"PHP-Twig",
+		"PhpBeautifier",
+		"Puppet",
+		"Puppet Syntax checking",
+		"SideBarEnhancements",
+		"SideBarGit",
+		"SublimeCodeIntel",
+		"sublimelint",
+		"SublimeLinter",
+		"Symfony2 Snippets",
+		"Theme - Soda",
+		"zenburn"
+	]
+}

@@ -1,0 +1,31 @@
+# osx
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Sublimetext
+*.sublime-project
+*.sublime-workspace
+
+# SVN
+.svn/
+
+# big design files
+*.psd
+*.ai
+*.key
+*.graffle
+.idea
+
+# vim backups
+*-e
+
+# vim installables
+vim/bundle
+vim-linux/
+vim/ctags
