@@ -12,3 +12,4 @@ sublime/User/Package Control.last-run
 .DS_Store
 *.log
 *.private
+*.old
