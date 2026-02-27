@@ -81,7 +81,8 @@ alias gd='git diff'
 # Fuzzy finder (https://github.com/junegunn/fzf)
 #-------------------------------------------------------------------------------
 force_color_prompt=yes
-[ -f ~/.fzf.bash ] && source ~/.fzf.bash
+# [ -f ~/.fzf.bash ] && source ~/.fzf.bash
+source <(fzf --zsh)
 
 #-------------------------------------------------------------------------------
 # Colored man pages
