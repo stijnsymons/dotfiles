@@ -103,3 +103,12 @@ man() {
 # SSH
 #-------------------------------------------------------------------------------
 ssh-add -K ~/.ssh/id_rsa > /dev/null 2>&1
+
+#-------------------------------------------------------------------------------
+# Confluence
+#-------------------------------------------------------------------------------
+export CONFLUENCE_DOMAIN="api.atlassian.com"
+export CONFLUENCE_API_PATH="/ex/confluence/9ff0c0f7-ad4b-47c6-b356-35144d98e6c8/wiki/rest/api"
+export CONFLUENCE_AUTH_TYPE="basic"
+export CONFLUENCE_EMAIL="stijn@novemberfive.co"
+export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write permissions
