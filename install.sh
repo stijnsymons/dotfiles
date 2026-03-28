@@ -44,16 +44,6 @@ if [ "Darwin" = "$(uname -s)" ]; then
 	sh osx
 fi
 
-# setup ssh config file for appstrakt on mac's only (avoids servers and vagrants)
-if [ -f $HOME/.ssh/config ]; then
-    cat "$PWD/ssh/config" >> $HOME/.ssh/config
-else
-    if [ ! -d $HOME/.ssh ]; then
-        mkdir -p $HOME/.ssh
-    fi
-    ln -s  $PWD/ssh/config $HOME/.ssh/config
-fi
-
 # some vim stuff
 mkdir -p $HOME/.vim/swap
 mkdir -p $HOME/.vim/backup
