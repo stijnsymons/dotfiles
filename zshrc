@@ -74,7 +74,7 @@ export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
 LS_OPTIONS=""
 alias l='ls -lAhF $LS_OPTIONS'
 alias ll='ls -lAhF $LS_OPTIONS'
-alias ff='find . -name "*" -type f | xargs grep '
+alias ff='ag'
 
 # git
 alias g='git add . && git commit && git push'
