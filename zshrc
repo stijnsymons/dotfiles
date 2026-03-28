@@ -49,10 +49,12 @@ compinit
 
 # plugins
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-source /opt/homebrew/share/fzf-tab/fzf-tab.plugin.zsh
+source /opt/homebrew/share/fzf-tab/fzf-tab.zsh
 
 # preview directories when completing cd
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
+# right arrow drills into directories
+zstyle ':fzf-tab:*' continuous-trigger 'right'
 
 #-------------------------------------------------------------------------------
 # Path
