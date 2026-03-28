@@ -42,6 +42,7 @@ eval "$(starship init zsh)"
 
 # load autocomplete
 source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
+source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 # Make Enter submit the command line straight from the menu
 bindkey -M menuselect '\r' .accept-line
 # Make Tab go straight to the menu and cycle there
