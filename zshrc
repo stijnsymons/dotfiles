@@ -85,8 +85,18 @@ alias gd='git diff'
 # Fuzzy finder (https://github.com/junegunn/fzf)
 #-------------------------------------------------------------------------------
 force_color_prompt=yes
-# [ -f ~/.fzf.bash ] && source ~/.fzf.bash
 source <(fzf --zsh)
+
+# up arrow: fzf history search on empty line, normal up otherwise
+fzf-history-or-up() {
+  if [[ -z "$BUFFER" ]]; then
+    fzf-history-widget
+  else
+    zle up-line-or-history
+  fi
+}
+zle -N fzf-history-or-up
+bindkey '^[[A' fzf-history-or-up
 
 #-------------------------------------------------------------------------------
 # Colored man pages
