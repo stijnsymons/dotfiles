@@ -22,8 +22,10 @@ export LANG LANGUAGE LC_CTYPE LC_ALL
 # editor
 export EDITOR=vim
 
-# increase history size
+# history
 export HISTSIZE=9999
+export SAVEHIST=9999
+export HISTFILE=~/.zsh_history
 
 #-------------------------------------------------------------------------------
 # Prompt
