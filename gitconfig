@@ -17,7 +17,9 @@
 [diff]
 	external = difft
 [merge]
-	tool = difft
+    tool = zed
+[mergetool "zed"]
+    cmd = zed --wait $MERGED
 [difftool]
 	prompt = false
 [init]
