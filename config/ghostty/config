@@ -5,3 +5,4 @@ window-padding-y = 5
 click-repeat-interval = 500
 quit-after-last-window-closed = true
 auto-update-channel = tip
+macos-option-as-alt = left
