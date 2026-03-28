@@ -66,11 +66,10 @@ inoremap <expr><tab> pumvisible() ? "\<c-n>" : "\<tab>"
 let g:lightline = {
       \ 'active': {
       \   'left': [ [ 'mode', 'paste' ],
-      \             [ 'fugitive', 'filename', 'modified' ] ,
+      \             [ 'filename', 'modified' ] ,
       \             ['buffers'] ]
       \ },
       \ 'component_function': {
-      \   'fugitive': 'LightLineFugitive',
       \   'buffers': 'LightLineBuffers',
       \   'modified': 'LightLineModified'
       \ }
@@ -90,10 +89,6 @@ endfunction
 
 function! LightLineBuffers()
   return len(filter(range(1, bufnr('$')), 'buflisted(v:val)')) + '/' + bufnr('%')
-endfunction
-
-function! LightLineFugitive()
- return exists('*fugitive#head') ? fugitive#head() : ''
 endfunction
 
 " Vim Indent Guide
