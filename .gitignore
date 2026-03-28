@@ -1,14 +1,7 @@
-vim/swap
-vim/backup
-vim/undo
-vim/cache
+.claude/
 vim/autoload
-vim/init.vim
 vim/plugged
 .netrwhist
-sublime/User/Package Control.cache/
-sublime/User/Package Control.last-run
-.svn/
 .DS_Store
 *.log
 *.private

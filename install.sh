@@ -28,7 +28,7 @@ link_and_backup()
 # wire up the dotfiles
 for name in *; do
 	case "$name" in
-		README.md|install.sh|install-programs.sh|osx|ssh|config|LaunchAgents|sublime|vim|Brewfile|.git*)
+		README.md|install.sh|install-programs.sh|osx|ssh|config|Brewfile|.git*)
 			# Skip these files/directories
 			;;
 		*)
@@ -45,7 +45,4 @@ if [ "Darwin" = "$(uname -s)" ]; then
 fi
 
 # some vim stuff
-mkdir -p $HOME/.vim/swap
-mkdir -p $HOME/.vim/backup
-mkdir -p $HOME/.vim/undo
-mkdir -p $HOME/.vim/cache
+mkdir -p $HOME/.vim/{swap,backup,undo,cache}
