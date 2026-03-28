@@ -26,19 +26,10 @@ link_and_backup()
 }
 
 # wire up the dotfiles
-# excluding bashrc, bashprofile and osx for osx only systems
-for name in *; do
-	if [ "$name" != "README.md" ]; then
-	if [ "$name" != "install.sh" ]; then
-	if [ "$name" != "osx" ]; then
-	if [ "$name" != "ssh" ]; then
-		link_and_backup $PWD/$name $HOME/.$name
-	fi;fi;fi;fi;fi
-done
 for name in *; do
 	case "$name" in
-		README.md|install.sh|osx|ssh|.git*)
-			# Skip these files
+		README.md|install.sh|install-programs.sh|osx|ssh|config|LaunchAgents|sublime|vim|Brewfile|.git*)
+			# Skip these files/directories
 			;;
 		*)
 			link_and_backup "$PWD/$name" "$HOME/.$name"
