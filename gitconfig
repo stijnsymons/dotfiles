@@ -15,9 +15,9 @@
 [push]
 	default = simple
 [diff]
-	tool = vimdiff
+	external = difft
 [merge]
-	tool = vimdiff
+	tool = difft
 [difftool]
 	prompt = false
 [init]
