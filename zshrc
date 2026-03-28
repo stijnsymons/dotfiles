@@ -26,6 +26,7 @@ export EDITOR=vim
 export HISTSIZE=9999
 export SAVEHIST=9999
 export HISTFILE=~/.zsh_history
+setopt HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS
 
 #-------------------------------------------------------------------------------
 # Prompt
