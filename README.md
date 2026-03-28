@@ -1,30 +1,36 @@
 # Dotfiles
 
-## About
+## Structure
 
-you can use this as a template, I recommend you fork it though and tweak it for yourself :)
-change `dotfiles/gitmodules` to contain your credentials instead of mine
+- `zshrc` — shell config (sourced via symlink at `~/.zshrc`)
+- `zshrc.private` — private env vars, API tokens (git-ignored)
+- `gitconfig` / `gitignore` — global git configuration
+- `vimrc` / `vim/` — vim configuration and plugins
+- `config/` — app configs symlinked into `~/.config/` (ghostty, yazi, etc.)
+- `Brewfile` — Homebrew packages, casks, and VS Code extensions
+- `osx` — macOS defaults script
+- `inputrc` — readline config (bash only)
+- `LaunchAgents/` — macOS launch agents (e.g. key remapping)
 
 ## Install
 
-* fork this repo
-* clone this repo to your machine
-	
-		$ cd
-		$ git clone <yourusername>/dotfiles
+```bash
+cd ~
+git clone <your-fork>/dotfiles
+cd dotfiles
+./install.sh
+```
 
-* change credentials in `dotfiles/gitmodules`
-* run install 
-		
-		$ cd ~/dotfiles
-		$ ./install.sh
+`install.sh` symlinks dotfiles into `~`, runs `install-programs.sh` (Homebrew + app configs), and applies macOS defaults.
 
-**install.sh does delete files without taking backups !!**
+**Warning: install.sh overwrites existing files — back up first.**
 
 ## LaunchAgents
 
-- for LaunchAgents do:
-  ln -s ~/dotfiles/LaunchAgents/com.local.KeyRemapping.plist ~/Library/LaunchAgents/com.local.KeyRemapping.plist
+Symlink manually:
 
-  this does keyboard remapping, btw the paragraph sign is called `non_us_backslash` - go figure
-  more info: https://hidutil-generator.netlify.app/
+```bash
+ln -s ~/dotfiles/LaunchAgents/com.local.KeyRemapping.plist ~/Library/LaunchAgents/
+```
+
+Key remapping reference: https://hidutil-generator.netlify.app/
