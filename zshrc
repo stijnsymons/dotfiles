@@ -40,21 +40,19 @@ eval "$(starship init zsh)"
 # Zsh
 #-------------------------------------------------------------------------------
 
-# load autocomplete
-source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
-source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-# Make Enter submit the command line straight from the menu
-bindkey -M menuselect '\r' .accept-line
-# Make Tab go straight to the menu and cycle there
-bindkey '\t' menu-select "$terminfo[kcbt]" menu-select
-bindkey -M menuselect '\t' menu-complete "$terminfo[kcbt]" reverse-menu-complete
-
+# completions
 if type brew &>/dev/null; then
   FPATH=$(brew --prefix)/share/zsh-completions:$FPATH
-
-  autoload -Uz compinit
-  compinit
 fi
+autoload -Uz compinit
+compinit
+
+# plugins
+source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+source /opt/homebrew/share/fzf-tab/fzf-tab.plugin.zsh
+
+# preview directories when completing cd
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
 
 #-------------------------------------------------------------------------------
 # Path
