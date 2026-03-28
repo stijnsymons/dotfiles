@@ -11,7 +11,7 @@
 	ahead = log origin/master..HEAD --oneline
     ls = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate
 [push]
-	default = matching
+	default = simple
 [diff]
 	tool = vimdiff
 [merge]
