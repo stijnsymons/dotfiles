@@ -2,7 +2,7 @@
 
 # Homebrew
 echo "Installing Homebrew"
-ruby -e "$(curl -fsSL https://raw.github.com/Homebrew/homebrew/go/install)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 ## Let Homebrew install the rest
 echo "Installing bundle for installing latest dumped Brewfile"
