@@ -20,3 +20,9 @@
 	prompt = false
 [init]
     defaultBranch = main
+[pull]
+    rebase = true
+[fetch]
+    prune = true
+[rerere]
+    enabled = true

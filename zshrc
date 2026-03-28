@@ -23,10 +23,10 @@ export LANG LANGUAGE LC_CTYPE LC_ALL
 export EDITOR=vim
 
 # history
-export HISTSIZE=9999
-export SAVEHIST=9999
+export HISTSIZE=999999
+export SAVEHIST=999999
 export HISTFILE=~/.zsh_history
-setopt HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS
+setopt HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS HIST_IGNORE_SPACE HIST_FIND_NO_DUPS
 
 #-------------------------------------------------------------------------------
 # Prompt
@@ -74,7 +74,6 @@ export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
 LS_OPTIONS=""
 alias l='ls -lAhF $LS_OPTIONS'
 alias ll='ls -lAhF $LS_OPTIONS'
-alias ff='ag'
 
 # git
 alias g='git add . && git commit && git push'
