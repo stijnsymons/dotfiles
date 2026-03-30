@@ -26,13 +26,14 @@ export EDITOR=vim
 export HISTSIZE=999999
 export SAVEHIST=999999
 export HISTFILE=~/.zsh_history
-setopt HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS HIST_IGNORE_SPACE HIST_FIND_NO_DUPS
+setopt HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS HIST_IGNORE_SPACE HIST_FIND_NO_DUPS HIST_EXPIRE_DUPS_FIRST
 
 #-------------------------------------------------------------------------------
 # Prompt
 #-------------------------------------------------------------------------------
 export LSCOLORS="gxcxfxdxbxegedabagacad"
 export CLICOLOR=1
+export EZA_COLORS="reset:ur=0:uw=0:ux=0:ue=0:gr=0:gw=0:gx=0:tr=0:tw=0:tx=0:su=0:sf=0:xa=0"
 
 eval "$(starship init zsh)"
 
@@ -41,18 +42,20 @@ eval "$(starship init zsh)"
 #-------------------------------------------------------------------------------
 
 # completions
-if type brew &>/dev/null; then
-  FPATH=$(brew --prefix)/share/zsh-completions:$FPATH
-fi
+FPATH=/opt/homebrew/share/zsh/site-functions:$FPATH
 autoload -Uz compinit
-compinit
+if [[ -n ~/.zcompdump(#qN.mh+24) ]]; then
+  compinit
+else
+  compinit -C
+fi
 
 # plugins
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /opt/homebrew/share/fzf-tab/fzf-tab.zsh
 
 # preview directories when completing cd
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls -1 --color=always $realpath'
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always --icons $realpath'
 # right arrow drills into directories
 zstyle ':fzf-tab:*' continuous-trigger 'right'
 
@@ -71,11 +74,15 @@ export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
 #-------------------------------------------------------------------------------
 
 # shell
-LS_OPTIONS=""
-alias l='ls -lAhF $LS_OPTIONS'
-alias ll='ls -lAhF $LS_OPTIONS'
+alias l='eza -lAF --icons'
+alias ll='eza -lAF --icons'
+alias ls='eza'
+alias tree='eza --tree --icons'
+alias cat='bat --paging=never'
 alias dig='doggo' # learn to use doggo
 alias claude='claude -r'
+alias y='yazi'
+alias top='htop'
 
 # git
 alias g='git add . && git commit && git push'
@@ -87,6 +94,7 @@ alias gd='git diff'
 #-------------------------------------------------------------------------------
 force_color_prompt=yes
 source <(fzf --zsh)
+eval "$(zoxide init zsh)"
 
 # up arrow: fzf history search on empty line, normal up otherwise
 fzf-history-or-up() {
@@ -117,7 +125,7 @@ man() {
 #-------------------------------------------------------------------------------
 # SSH
 #-------------------------------------------------------------------------------
-ssh-add --apple-use-keychain ~/.ssh/id_rsa > /dev/null 2>&1
+ssh-add -l &>/dev/null || ssh-add --apple-use-keychain ~/.ssh/id_rsa 2>/dev/null
 
 #-------------------------------------------------------------------------------
 # Confluence
@@ -127,3 +135,8 @@ export CONFLUENCE_API_PATH="/ex/confluence/9ff0c0f7-ad4b-47c6-b356-35144d98e6c8/
 export CONFLUENCE_AUTH_TYPE="basic"
 export CONFLUENCE_EMAIL="stijn@novemberfive.co"
 export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write permissions
+
+#-------------------------------------------------------------------------------
+# Syntax highlighting (must be last)
+#-------------------------------------------------------------------------------
+source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh

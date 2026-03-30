@@ -16,12 +16,15 @@
 	default = simple
 [diff]
 	external = difft
+	algorithm = histogram
 [merge]
     tool = zed
 [mergetool "zed"]
     cmd = zed --wait $MERGED
 [difftool]
 	prompt = false
+[log]
+	date = relative
 [init]
     defaultBranch = main
 [pull]
