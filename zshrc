@@ -75,6 +75,7 @@ LS_OPTIONS=""
 alias l='ls -lAhF $LS_OPTIONS'
 alias ll='ls -lAhF $LS_OPTIONS'
 alias dig='doggo' # learn to use doggo
+alias claude='claude -r'
 
 # git
 alias g='git add . && git commit && git push'
