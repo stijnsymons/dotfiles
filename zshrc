@@ -74,13 +74,13 @@ export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
 #-------------------------------------------------------------------------------
 
 # shell
+alias ls='eza'           # learn eza
 alias l='eza -lAF --icons'
 alias ll='eza -lAF --icons'
-alias ls='eza'
 alias tree='eza --tree --icons'
 alias cat='bat --paging=never'
-alias dig='doggo' # learn to use doggo
-alias claude='claude -r'
+alias dig='doggo'        # learn to use doggo
+alias claude='claude -r' # prefer reconnecting to existing 
 alias y='yazi'
 alias top='htop'
 
