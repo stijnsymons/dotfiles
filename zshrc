@@ -80,7 +80,8 @@ alias ll='eza -lAF --icons'
 alias tree='eza --tree --icons'
 alias cat='bat --paging=never'
 alias dig='doggo'        # learn to use doggo
-alias claude='claude -r' # prefer reconnecting to existing 
+alias claude='claude -r --enable-auto-mode' # prefer reconnecting to existing
+
 alias y='yazi'
 alias top='htop'
 
