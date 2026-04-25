@@ -5,3 +5,9 @@
 
 [gcloud]
 disabled = true
+
+[jobs]
+symbol = "✦"
+style = "yellow bold"
+number_threshold = 1
+symbol_threshold = 1
