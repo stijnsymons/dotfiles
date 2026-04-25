@@ -81,6 +81,8 @@ alias tree='eza --tree --icons'
 alias cat='bat --paging=never'
 alias dig='doggo'        # learn to use doggo
 alias claude='claude -r --enable-auto-mode' # prefer reconnecting to existing
+alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
+alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
 alias y='yazi'
 alias top='htop'
