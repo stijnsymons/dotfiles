@@ -1,6 +1,6 @@
 [user]
 	name = Stijn Symons
-	email = stijn@novemberfive.co
+	email = ssymons@gmail.com
 [credential]
 	helper = osxkeychain
 [color]
@@ -33,3 +33,8 @@
     prune = true
 [rerere]
     enabled = true
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
