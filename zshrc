@@ -75,12 +75,13 @@ export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
 
 # shell
 alias ls='eza'           # learn eza
-alias l='eza -lAF --icons'
-alias ll='eza -lAF --icons'
-alias tree='eza --tree --icons'
+alias l='eza -lAF --icons=auto'
+alias ll='eza -lAF --icons=auto'
+alias tree='eza --tree --icons=auto'
 alias cat='bat --paging=never'
 alias dig='doggo'        # learn to use doggo
 alias claude='claude -r --enable-auto-mode' # prefer reconnecting to existing
+alias cclaude='command claude --enable-auto-mode' # prefer reconnecting to existing
 alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
 alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
@@ -143,3 +144,12 @@ export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write p
 # Syntax highlighting (must be last)
 #-------------------------------------------------------------------------------
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+#-------------------------------------------------------------------------------
+# MOTD (one-line: brew · uptime · cpu · mem · last login)
+# Suppress default "Last login:" line via ~/.hushlogin
+#-------------------------------------------------------------------------------
+[[ $- == *i* && -z $MOTD_SHOWN ]] && {
+  source ~/dotfiles/motd.sh
+  export MOTD_SHOWN=1
+}
