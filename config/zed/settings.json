@@ -7,7 +7,19 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "icon_theme": "Colored Zed Icons Theme Dark",
+  "cli_default_open_behavior": "existing_window",
+  "project_panel": {
+    "dock": "left"
+  },
+  "outline_panel": {
+    "dock": "left"
+  },
+  "collaboration_panel": {
+    "dock": "left"
+  },
   "git_panel": {
+    "dock": "left",
     "tree_view": true
   },
   "context_servers": {
@@ -23,6 +35,7 @@
     }
   },
   "terminal": {
+    "dock": "right",
     "toolbar": {
       "breadcrumbs": false
     },
@@ -84,7 +97,7 @@
   "agent": {
     "inline_assistant_model": {
       "provider": "anthropic",
-      "model": "claude-sonnet-4-6-latest",
+      "model": "claude-haiku-4-5-latest",
       "enable_thinking": false
     },
     "dock": "right",
