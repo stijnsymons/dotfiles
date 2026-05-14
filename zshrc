@@ -62,7 +62,7 @@ zstyle ':fzf-tab:*' continuous-trigger 'right'
 #-------------------------------------------------------------------------------
 # Path
 #-------------------------------------------------------------------------------
-export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$PATH
+export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$HOME/.local/bin:$PATH
 
 #-------------------------------------------------------------------------------
 # Source private configuration if it exists
@@ -86,7 +86,7 @@ alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
 alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
 alias y='yazi'
-alias top='htop'
+alias top='btop'
 
 # git
 alias g='git add . && git commit && git push'
