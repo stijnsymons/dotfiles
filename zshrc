@@ -41,6 +41,9 @@ eval "$(starship init zsh)"
 # Zsh
 #-------------------------------------------------------------------------------
 
+# treat /, ., - as word boundaries so opt-backspace nibbles path segments
+WORDCHARS='*?_~=&;!#$%^(){}<>'
+
 # completions
 FPATH=/opt/homebrew/share/zsh/site-functions:$FPATH
 autoload -Uz compinit
