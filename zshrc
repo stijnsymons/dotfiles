@@ -90,6 +90,7 @@ alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
 alias y='yazi'
 alias top='btop'
+alias upgrade='~/dotfiles/upgrade-all.sh'
 
 # git
 alias g='git add . && git commit && git push'
