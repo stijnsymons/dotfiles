@@ -93,8 +93,15 @@ alias ll='eza -lAF --icons=auto'
 alias tree='eza --tree --icons=auto'
 alias cat='bat --paging=never'
 alias dig='doggo'        # learn to use doggo
-alias claude='claude -r --enable-auto-mode' # prefer reconnecting to existing
-alias cclaude='command claude --enable-auto-mode' # prefer reconnecting to existing
+# claude: fzf picker — reconnect to existing session (default) or start new
+claude() {
+  local choice
+  choice=$(printf 'reconnect\nnew' | fzf --prompt='Claude: ' --height=4 --reverse --no-info) || return
+  case "$choice" in
+    reconnect) command claude -r --enable-auto-mode "$@" ;;
+    new)       command claude --enable-auto-mode "$@" ;;
+  esac
+}
 alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
 alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
