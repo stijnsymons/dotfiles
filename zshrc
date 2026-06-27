@@ -105,12 +105,12 @@ claude() {
 alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
 alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
-# brewctl: fzf-driven brew wrapper, profile-aware (Apple Silicon = personal, Intel = work)
+# brewctl: fzf-driven brew wrapper, profile-aware (set N5_WORK_LAPTOP=1 in zshrc.private on work machines)
 brewctl() {
   local dotfiles=~/dotfiles
   local base=$dotfiles/Brewfile
   local work=$dotfiles/Brewfile.work
-  local is_work=0; [[ ! -d /opt/homebrew ]] && is_work=1
+  local is_work=0; [[ -n $N5_WORK_LAPTOP ]] && is_work=1
 
   local action=${1:-}
   if [[ -z $action ]]; then

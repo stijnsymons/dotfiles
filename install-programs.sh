@@ -8,8 +8,9 @@ echo "Installing Homebrew"
 echo "Installing bundle for installing latest dumped Brewfile"
 brew tap Homebrew/bundle
 brew bundle --file=Brewfile
-# Work laptop (Intel) also gets the work-only extras
-if [[ ! -d /opt/homebrew && -f Brewfile.work ]]; then
+# Work laptop also gets the work-only extras (set N5_WORK_LAPTOP=1 in zshrc.private)
+[[ -f "$HOME/dotfiles/zshrc.private" ]] && source "$HOME/dotfiles/zshrc.private"
+if [[ -n "$N5_WORK_LAPTOP" && -f Brewfile.work ]]; then
   echo "Installing Brewfile.work (work-only extras)"
   brew bundle --file=Brewfile.work
 fi
