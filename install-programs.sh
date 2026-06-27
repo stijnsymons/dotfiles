@@ -7,7 +7,12 @@ echo "Installing Homebrew"
 ## Let Homebrew install the rest
 echo "Installing bundle for installing latest dumped Brewfile"
 brew tap Homebrew/bundle
-brew bundle
+brew bundle --file=Brewfile
+# Work laptop (Intel) also gets the work-only extras
+if [[ ! -d /opt/homebrew && -f Brewfile.work ]]; then
+  echo "Installing Brewfile.work (work-only extras)"
+  brew bundle --file=Brewfile.work
+fi
 
 ## install VIM Plug Manager
 curl -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
