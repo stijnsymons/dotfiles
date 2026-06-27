@@ -83,27 +83,21 @@
   },
   "colorize_brackets": false,
   "show_edit_predictions": false,
-  "agent_servers": {
-    "your_agent": {
-      "type": "custom",
-      "command": "path_to_executable",
-      "args": [],
-      "env": {},
-    },
-  },
   "debugger": {
     "dock": "right",
   },
   "agent": {
     "inline_assistant_model": {
       "provider": "anthropic",
-      "model": "claude-haiku-4-5-latest",
+      "model": "claude-haiku-4-5-20251001",
       "enable_thinking": false
     },
-    "dock": "right",
+    "dock": "left",
     "default_model": {
+      "effort": "high",
+      "enable_thinking": true,
       "provider": "anthropic",
-      "model": "claude-opus-4-6-latest"
+      "model": "claude-sonnet-4-6"
     },
     "model_parameters": [],
   },
@@ -115,4 +109,9 @@
     "light": "Ayu Light",
     "dark": "Ayu Mirage",
   },
+  "agent_servers": {
+    "claude-acp": {
+      "type": "registry"
+    }
+  }
 }
