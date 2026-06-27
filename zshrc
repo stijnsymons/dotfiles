@@ -38,6 +38,16 @@ export EZA_COLORS="reset:ur=0:uw=0:ux=0:ue=0:gr=0:gw=0:gx=0:tr=0:tw=0:tx=0:su=0:
 eval "$(starship init zsh)"
 
 #-------------------------------------------------------------------------------
+# Homebrew (Apple Silicon → /opt/homebrew, Intel → /usr/local)
+#-------------------------------------------------------------------------------
+if [[ -x /opt/homebrew/bin/brew ]]; then
+  BREW_PREFIX=/opt/homebrew
+elif [[ -x /usr/local/bin/brew ]]; then
+  BREW_PREFIX=/usr/local
+fi
+[[ -n $BREW_PREFIX ]] && eval "$($BREW_PREFIX/bin/brew shellenv)"
+
+#-------------------------------------------------------------------------------
 # Zsh
 #-------------------------------------------------------------------------------
 
@@ -45,7 +55,7 @@ eval "$(starship init zsh)"
 WORDCHARS='*?_~=&;!#$%^(){}<>'
 
 # completions
-FPATH=/opt/homebrew/share/zsh/site-functions:$FPATH
+FPATH=$BREW_PREFIX/share/zsh/site-functions:$FPATH
 autoload -Uz compinit
 if [[ -n ~/.zcompdump(#qN.mh+24) ]]; then
   compinit
@@ -54,8 +64,8 @@ else
 fi
 
 # plugins
-source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
-source /opt/homebrew/share/fzf-tab/fzf-tab.zsh
+[[ -r $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && source $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -r $BREW_PREFIX/share/fzf-tab/fzf-tab.zsh ]] && source $BREW_PREFIX/share/fzf-tab/fzf-tab.zsh
 
 # preview directories when completing cd
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always --icons $realpath'
@@ -147,7 +157,7 @@ export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write p
 #-------------------------------------------------------------------------------
 # Syntax highlighting (must be last)
 #-------------------------------------------------------------------------------
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+[[ -r $BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && source $BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 
 #-------------------------------------------------------------------------------
 # MOTD (one-line: brew · uptime · cpu · mem · last login)
