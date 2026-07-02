@@ -1,2 +1,12 @@
 [mgr]
 show_hidden = true
+
+# Preview Markdown with leaf (rich TUI renderer) via the piper plugin.
+# $w = preview width, $1 = file path. Requires: `ya pkg add yazi-rs/plugins:piper`
+[[plugin.prepend_previewers]]
+url = "*.md"
+run = 'piper -- leaf --inline "ansi:$w" "$1"'
+
+[[plugin.prepend_previewers]]
+url = "*.markdown"
+run = 'piper -- leaf --inline "ansi:$w" "$1"'

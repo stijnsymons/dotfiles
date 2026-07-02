@@ -1,0 +1,15 @@
+// Zed custom tasks — run via cmd-shift-p → "task: spawn"
+[
+  {
+    "label": "Preview Markdown (leaf)",
+    "command": "leaf",
+    "args": ["--watch", "$ZED_FILE"],
+    // open in the right terminal dock (matches terminal.dock = "right")
+    "reveal": "always",
+    "reveal_target": "dock",
+    // reuse one terminal; quitting leaf (q) hides the pane again
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "hide": "on_success"
+  }
+]
