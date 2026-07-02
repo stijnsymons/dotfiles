@@ -189,6 +189,11 @@ fzf-history-or-up() {
     zle up-line-or-history
   fi
 }
+# Force emacs-style line editing. Without this, EDITOR=vim makes zsh default the
+# ZLE keymap to vi mode — Esc drops you into vi command mode (starship shows ❮,
+# backspace stops deleting). `bindkey -e` keeps normal editing regardless of $EDITOR.
+bindkey -e
+
 zle -N fzf-history-or-up
 bindkey '^[[A' fzf-history-or-up
 
