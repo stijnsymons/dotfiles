@@ -189,7 +189,7 @@ pane_gaps = false
 # accent = "cyan"
 
 # Background notification popup delivery
-agent_panel_sort = "spaces"
+agent_panel_sort = "priority"
 [ui.toast]
 # off = disable pop-up notifications
 # herdr = show in-app toasts
@@ -198,7 +198,7 @@ agent_panel_sort = "spaces"
 # delivery = "off"
 # delay_seconds = 1
 
-delivery = "system"
+delivery = "terminal"
 [ui.toast.herdr]
 # position = "bottom-right"
 
