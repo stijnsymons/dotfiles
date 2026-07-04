@@ -624,6 +624,19 @@ defaults write org.m0k.transmission BlocklistAutoUpdate -bool true
 defaults write org.m0k.transmission RandomPort -bool true
 
 ###############################################################################
+# Audio                                                                       #
+###############################################################################
+
+# Auto-activate the "E30 II" DAC as the default output whenever it's connected.
+# Needs switchaudio-osx (in Brewfile). A small edge-triggered poller runs via a
+# LaunchAgent, so it only switches when the device newly appears — a manual
+# choice of another output is respected until reconnect.
+# Verify the exact device name with: SwitchAudioSource -a -t output
+ln -sf "${HOME}/dotfiles/LaunchAgents/com.local.AudioAutoSwitch.plist" "${HOME}/Library/LaunchAgents/com.local.AudioAutoSwitch.plist"
+launchctl bootout "gui/$(id -u)/com.local.AudioAutoSwitch" 2>/dev/null
+launchctl bootstrap "gui/$(id -u)" "${HOME}/Library/LaunchAgents/com.local.AudioAutoSwitch.plist"
+
+###############################################################################
 # Kill affected applications                                                  #
 ###############################################################################
 
