@@ -102,6 +102,7 @@ claude() {
     new)       command claude --enable-auto-mode "$@" ;;
   esac
 }
+alias c=claude
 alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
 alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
