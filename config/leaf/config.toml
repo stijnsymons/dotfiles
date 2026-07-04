@@ -1,0 +1,9 @@
+# leaf configuration
+# Theme aligned to the ghostty terminal palette (see ghostty.toml, next to this file).
+# Relative path is resolved from this config file's directory.
+theme = "ghostty.toml"
+
+# Use zed at the current line when pressing Ctrl+E inside leaf
+editor = "zed"
+
+watch = false
