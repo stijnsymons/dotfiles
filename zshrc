@@ -214,6 +214,14 @@ bindkey -e
 zle -N fzf-history-or-up
 bindkey '^[[A' fzf-history-or-up
 
+# TUIs (leaf, yazi, ...) can exit without resetting mouse-tracking / alternate-scroll
+# modes, which then makes the mouse wheel emit arrow keys at the prompt — turning
+# scroll-up into an Up-arrow (→ fzf history) instead of scrolling the scrollback.
+# Scrub those modes before every prompt so the wheel always scrolls again.
+_reset_mouse_modes() { printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?1007l' }
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _reset_mouse_modes
+
 #-------------------------------------------------------------------------------
 # Colored man pages
 #-------------------------------------------------------------------------------
