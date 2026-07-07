@@ -106,82 +106,9 @@ alias c=claude
 alias pib='cd ~/code/vbrb-0010/vbrb-0010-pib-study/docs;claude;cd -'
 alias pre='cd ~/code/vbrb-0001/rule-engine/docs/policy-v3;claude;cd -'
 
-# brewctl: fzf-driven brew wrapper, profile-aware (set N5_WORK_LAPTOP=1 in zshrc.private on work machines)
-brewctl() {
-  local dotfiles=~/dotfiles
-  local base=$dotfiles/Brewfile
-  local work=$dotfiles/Brewfile.work
-  local is_work=0; [[ -n $N5_WORK_LAPTOP ]] && is_work=1
-
-  local action=${1:-}
-  if [[ -z $action ]]; then
-    action=$(printf 'upgrade\ninstall\ndump\nedit\nshow-extras\ndiff' \
-      | fzf --prompt='brewctl: ' --height=8 --reverse --no-info) || return
-  fi
-
-  case "$action" in
-    upgrade)
-      brew update && brew upgrade && brew cleanup
-      ;;
-    install)
-      brew bundle --file="$base"
-      (( is_work )) && [[ -f $work ]] && brew bundle --file="$work"
-      ;;
-    dump)
-      if (( is_work )); then
-        local tmp=$(mktemp)
-        brew bundle dump --file="$tmp" --force
-        comm -23 <(sort -u "$tmp") <(sort -u "$base") > "$work"
-        rm -f "$tmp"
-        print "wrote work-only delta → $work ($(wc -l < $work | tr -d ' ') lines)"
-      else
-        brew bundle dump --file="$base" --force
-        print "wrote personal baseline → $base"
-      fi
-      ;;
-    edit)
-      if (( is_work )); then
-        local pick
-        pick=$(printf 'Brewfile\nBrewfile.work' \
-          | fzf --prompt='edit: ' --height=4 --reverse --no-info) || return
-        ${EDITOR:-vim} "$dotfiles/$pick"
-      else
-        ${EDITOR:-vim} "$base"
-      fi
-      ;;
-    show-extras)
-      [[ -f $work ]] && bat --paging=never "$work" || print "no $work yet"
-      ;;
-    diff)
-      local tmp tracked
-      tmp=$(mktemp); tracked=$(mktemp)
-      brew bundle dump --file="$tmp" --force
-      cat "$base" > "$tracked"
-      (( is_work )) && [[ -f $work ]] && cat "$work" >> "$tracked"
-      print "── installed but untracked ──"
-      comm -23 <(sort -u "$tmp") <(sort -u "$tracked")
-      rm -f "$tmp" "$tracked"
-      ;;
-    *) print -u2 "brewctl: unknown action '$action'"; return 1 ;;
-  esac
-}
-
-# md2pdf: Markdown → PDF with mermaid diagrams, images & tables.
-# Uses pandoc + mermaid-filter (renders ```mermaid via headless Chrome) + typst engine.
-md2pdf() {
-  emulate -L zsh
-  local in=$1
-  if [[ -z $in || ! -f $in ]]; then
-    print -u2 "usage: md2pdf <file.md> [out.pdf]"; return 1
-  fi
-  local out=${2:-${in:r}.pdf}
-  # mermaid-filter's bundled puppeteer needs a real browser; point it at one.
-  local chrome="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  [[ -x $chrome ]] || { print -u2 "md2pdf: Google Chrome not found (needed for mermaid rendering)"; return 1 }
-  PUPPETEER_EXECUTABLE_PATH=$chrome \
-    pandoc "$in" --filter mermaid-filter --pdf-engine=typst -o "$out" && print "→ $out"
-  rm -f mermaid-filter.err   # stray log mermaid-filter drops in cwd
-}
+# Standalone shell functions live in zsh/functions/ for readability (brewctl, md2pdf, …)
+for _fn in ~/dotfiles/zsh/functions/*.zsh(N); do source "$_fn"; done
+unset _fn
 
 alias y='yazi'
 alias top='btop'
