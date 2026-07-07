@@ -211,6 +211,9 @@ fzf-history-or-up() {
 # ZLE keymap to vi mode — Esc drops you into vi command mode (starship shows ❮,
 # backspace stops deleting). `bindkey -e` keeps normal editing regardless of $EDITOR.
 bindkey -e
+# Forward-delete (fn+backspace) sends ^[[3~; emacs keymap leaves it unbound, so
+# the trailing ~ would self-insert. Bind it to delete-char.
+bindkey '^[[3~' delete-char
 
 zle -N fzf-history-or-up
 bindkey '^[[A' fzf-history-or-up
