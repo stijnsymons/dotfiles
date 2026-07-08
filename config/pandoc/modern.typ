@@ -10,6 +10,9 @@
 ]
 #show figure.where(kind: table): set figure.caption(position: top)
 #show figure.where(kind: image): set figure.caption(position: bottom)
+// figures (incl. pandoc-wrapped tables) aren't breakable by default, so a long
+// table overflows the page and overprints instead of flowing to the next page.
+#show figure: set block(breakable: true)
 
 $if(highlighting-definitions)$
 $highlighting-definitions$
