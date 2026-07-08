@@ -48,7 +48,15 @@ $endif$
 
 // code: subtle background, mono
 #show raw: set text(font: "Menlo", size: 9pt)
-#show raw.where(block: false): box.with(fill: rgb("#eef1f4"), inset: (x: 3pt), outset: (y: 3pt), radius: 2pt)
+// inline code: a breakable chip. `box` never wraps, so long SNAKE_CASE.identifiers
+// overflowed table cells and overprinted neighbours — use highlight (wraps across
+// lines) and inject zero-width breaks after . _ - / so identifiers can wrap.
+#show raw.where(block: false): it => {
+  let s = it.text
+  for c in (".", "_", "-", "/") { s = s.replace(c, c + "\u{200B}") }
+  highlight(fill: rgb("#eef1f4"), radius: 2pt, extent: 1.5pt,
+            text(font: "Menlo", size: 0.9em, s))
+}
 #show raw.where(block: true): block.with(fill: soft, inset: 10pt, radius: 3pt, width: 100%)
 
 // tables: hairline rows, quiet header band
