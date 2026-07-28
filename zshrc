@@ -26,7 +26,9 @@ export EDITOR=vim
 export HISTSIZE=999999
 export SAVEHIST=999999
 export HISTFILE=~/.zsh_history
-setopt HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS HIST_IGNORE_SPACE HIST_FIND_NO_DUPS HIST_EXPIRE_DUPS_FIRST
+# EXTENDED_HISTORY timestamps every stored command (the full detail, feeds workday);
+# fzf's Ctrl-R dedups its own display, so the search view stays clean regardless.
+setopt EXTENDED_HISTORY HIST_IGNORE_DUPS SHARE_HISTORY HIST_REDUCE_BLANKS HIST_IGNORE_SPACE HIST_FIND_NO_DUPS HIST_EXPIRE_DUPS_FIRST
 
 #-------------------------------------------------------------------------------
 # Prompt
