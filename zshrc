@@ -77,7 +77,7 @@ zstyle ':fzf-tab:*' continuous-trigger 'right'
 #-------------------------------------------------------------------------------
 # Path
 #-------------------------------------------------------------------------------
-export PATH=/usr/local/bin:~/bin:/usr/local/sbin:~/.cargo/bin:$HOME/.local/bin:$PATH
+export PATH=/usr/local/bin:~/bin:~/code/assistant/bin:/usr/local/sbin:~/.cargo/bin:$HOME/.local/bin:$PATH
 
 #-------------------------------------------------------------------------------
 # Source private configuration if it exists
