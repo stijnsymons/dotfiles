@@ -241,7 +241,7 @@ delivery = "terminal"
 # Experimental local Kitty graphics rendering for attached clients.
 # Requires a Kitty graphics-compatible outer terminal.
 # Enabled so yazi (and other Kitty-graphics apps) can render images in panes.
-kitty_graphics = true
+kitty_graphics = false
 # Save recent pane screen history across full server restarts.
 pane_history = false
 # While prefix mode is active, temporarily switch the macOS host input
