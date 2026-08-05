@@ -1,0 +1,10 @@
+# QuickLook the hovered file (or all selected files) with <C-p>.
+# qlmanage -p drives the macOS QuickLook engine, so each file opens in whichever
+# QuickLook generator is registered for it — .md/.markdown → QLMarkdown, plus
+# PDFs, images, etc. for free. --orphan detaches it so yazi stays interactive
+# and the floating preview behaves like Finder's spacebar QuickLook; Esc/Cmd-W
+# closes it. Output is muted so qlmanage's chatter can't corrupt the TUI.
+[[mgr.prepend_keymap]]
+on   = "<C-p>"
+run  = "shell 'qlmanage -p \"$@\" >/dev/null 2>&1' --orphan"
+desc = "QuickLook the hovered/selected file(s)"
