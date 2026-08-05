@@ -1,9 +1,11 @@
 # workday: reconstruct daily first/last manual-activity times for the past N days.
 #
 # Signal: terminal login sessions from `last` (every terminal tab / herdr pane
-# login + boot/reboot/shutdown), which densely brackets active hours. Session
-# start AND end times are used. zsh history isn't used for the past — it only
-# gained timestamps (EXTENDED_HISTORY) from now on.
+# login + boot/reboot/shutdown), unioned with zsh EXTENDED_HISTORY timestamps
+# (every command run, dense within an already-open session — `last` only sees
+# a session's open/close, not what happens inside it). History timestamps only
+# exist from whenever EXTENDED_HISTORY was enabled onward; older lines have no
+# ': EPOCH:' prefix and are silently ignored.
 #
 # Columns: DATE FIRST LAST SPAN_HOURS SAMPLES. Days with no terminal activity
 # (e.g. days off) are omitted.
@@ -24,23 +26,44 @@ workday() {
 
   {
     (( tsv )) || print 'DATE\tFIRST\tLAST\tSPAN_HOURS\tSAMPLES'
-    # 1) normalise every session endpoint from `last` to "Mon DD HH:MM"
-    #    (anchor on the weekday token so an optional host column doesn't shift it)
-    last | awk '
-      { wd=0
-        for (i=1;i<=NF;i++) if ($i ~ /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/) { wd=i; break }
-        if (wd==0) next
-        print $(wd+1), $(wd+2), $(wd+3)                       # session start
-        for (j=wd+4;j<NF;j++)                                 # session end, if any
-          if ($j=="-" && $(j+1) ~ /^[0-9][0-9]:[0-9][0-9]$/) { print $(wd+1), $(wd+2), $(j+1); break }
-      }' | \
-    # 2) parse to epoch (infer year), keep only the last N days → "YYYY-MM-DD<TAB>HH:MM"
-    while read -r mon day tim; do
-      ep=$(date -j -f "%b %d %H:%M %Y" "$mon $day $tim $year" +%s 2>/dev/null) || continue
-      (( ep > now )) && ep=$(date -j -f "%b %d %H:%M %Y" "$mon $day $tim $((year-1))" +%s 2>/dev/null)
-      (( ep < cutoff || ep > now )) && continue
-      printf '%s\t%s\n' "$(date -r $ep '+%Y-%m-%d')" "$tim"
-    done | \
+    {
+      # 1) normalise every session endpoint from `last` to "Mon DD HH:MM"
+      #    (anchor on the weekday token so an optional host column doesn't shift it)
+      last | awk '
+        { wd=0
+          for (i=1;i<=NF;i++) if ($i ~ /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/) { wd=i; break }
+          if (wd==0) next
+          print $(wd+1), $(wd+2), $(wd+3)                       # session start
+          for (j=wd+4;j<NF;j++)                                 # session end, if any
+            if ($j=="-" && $(j+1) ~ /^[0-9][0-9]:[0-9][0-9]$/) { print $(wd+1), $(wd+2), $(j+1); break }
+        }' | \
+      # 2) parse to epoch (infer year), keep only the last N days → "YYYY-MM-DD<TAB>HH:MM"
+      while read -r mon day tim; do
+        ep=$(date -j -f "%b %d %H:%M %Y" "$mon $day $tim $year" +%s 2>/dev/null) || continue
+        (( ep > now )) && ep=$(date -j -f "%b %d %H:%M %Y" "$mon $day $tim $((year-1))" +%s 2>/dev/null)
+        (( ep < cutoff || ep > now )) && continue
+        printf '%s\t%s\n' "$(date -r $ep '+%Y-%m-%d')" "$tim"
+      done
+
+      # 1b) zsh EXTENDED_HISTORY: every timestamped command as an activity sample
+      #     (lines are ': EPOCH:DURATION;command'; older, pre-EXTENDED_HISTORY
+      #     lines lack this prefix and don't match). Enabling EXTENDED_HISTORY
+      #     backfills every pre-existing line with the *same* epoch (the moment
+      #     of the rewrite) rather than its real run time — a real command is
+      #     never issued 20+ times in one literal second, so drop epochs that
+      #     pile up that heavily as backfill artefacts, not activity.
+      local histfile=${HISTFILE:-~/.zsh_history}
+      if [[ -r $histfile ]]; then
+        awk -F';' '
+          /^: [0-9]+:/ { n=$1; sub(/^: /,"",n); sub(/:.*/,"",n); c[n]++; idx++; a[idx]=n }
+          END { for (i=1;i<=idx;i++) if (c[a[i]] <= 20) print a[i] }
+        ' "$histfile" | \
+        while read -r ep; do
+          (( ep < cutoff || ep > now )) && continue
+          printf '%s\t%s\n' "$(date -r "$ep" '+%Y-%m-%d')" "$(date -r "$ep" '+%H:%M')"
+        done
+      fi
+    } | \
     # 3) bucket by day → earliest/latest (HH:MM sorts lexically), span, sample count
     awk -F'\t' '
       { d=$1; t=$2; n[d]++
