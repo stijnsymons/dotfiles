@@ -24,7 +24,11 @@ md2pdf() {
   # theme: N5-branded by default, neutral with --clean (falls back to pandoc default if missing)
   local tmpl="$HOME/dotfiles/config/pandoc/$( (( clean )) && print modern.typ || print novemberfive.typ )"
   local -a targs; [[ -f $tmpl ]] && targs=(--template "$tmpl")
+  # Reconcile GitHub-style anchors with pandoc heading ids so typst doesn't
+  # abort on internal links (e.g. GitHub drops '.' from #...-file.md anchors).
+  local lua="$HOME/dotfiles/config/pandoc/fix-internal-links.lua"
+  local -a largs; [[ -f $lua ]] && largs=(--lua-filter "$lua")
   PUPPETEER_EXECUTABLE_PATH=$chrome \
-    pandoc "$in" --filter mermaid-filter --pdf-engine=typst "${targs[@]}" -o "$out" && print "→ $out"
+    pandoc "$in" --filter mermaid-filter "${largs[@]}" --pdf-engine=typst "${targs[@]}" -o "$out" && print "→ $out"
   rm -f mermaid-filter.err   # stray log mermaid-filter drops in cwd
 }
