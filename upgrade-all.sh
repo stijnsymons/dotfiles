@@ -36,6 +36,17 @@ else
 fi
 brew cleanup
 
+# First exec of a freshly-written binary blocks ~1-3s while Aikido/macOS
+# scan+verify it; pre-warm the runtimes starship probes so that tax is paid
+# here and not at the next shell prompt (starship WARN: command timed out).
+section "warm first-exec caches"
+for bin in node deno python3 go rustc; do
+  if command -v "$bin" >/dev/null; then
+    { "$bin" --version >/dev/null 2>&1 || "$bin" version >/dev/null 2>&1; } &
+  fi
+done
+wait
+
 section "npm (global)"
 npm update -g
 
