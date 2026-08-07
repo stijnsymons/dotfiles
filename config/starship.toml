@@ -1,7 +1,8 @@
 # Get editor completions based on the config schema
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# command_timeout = 1000
+# node --version takes >1s here (binary scanning); default 500ms times out
+command_timeout = 2000
 
 [gcloud]
 disabled = true
