@@ -148,6 +148,9 @@ bindkey '^[[3~' delete-char
 zle -N fzf-history-or-up
 bindkey '^[[A' fzf-history-or-up
 
+# fzf.git
+source ~/code/fzf-git.sh/fzf-git.sh
+
 # TUIs (leaf, yazi, ...) can exit without resetting mouse-tracking / alternate-scroll
 # modes, which then makes the mouse wheel emit arrow keys at the prompt — turning
 # scroll-up into an Up-arrow (→ fzf history) instead of scrolling the scrollback.

@@ -20,7 +20,7 @@ section "npm (global)"
 npm update -g
 
 section "N5 tools"
-for repo in ~/code/brain ~/code/skills ~/code/claude-statusline ~/code/superpowers; do
+for repo in ~/code/brain ~/code/skills ~/code/claude-statusline ~/code/superpowers ~/code/fzf-git.sh; do
   if [[ -d "$repo/.git" ]]; then
     printf "${DIM}— %s${RESET}\n" "$repo"
     git -C "$repo" pull --ff-only || warn "pull failed in $repo"
