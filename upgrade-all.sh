@@ -14,7 +14,27 @@ section() { printf "\n${YELLOW}▸ %s${RESET}\n" "$1"; }
 warn()    { printf "${RED}✗${RESET} %s\n" "$1"; }
 
 section "Homebrew"
-brew update && brew upgrade && brew cleanup
+brew update
+
+# herdr upgrades can break live sessions (client/server compat) — never
+# upgrade it silently; ask, and hold it back via a temporary pin on "no".
+if brew outdated --quiet | grep -qx herdr; then
+  printf "${YELLOW}⚠ %s — upgrading may break running herdr sessions${RESET}\n" \
+    "$(brew outdated --verbose | grep '^herdr')"
+  if read -q "REPLY?Upgrade herdr too? [y/N] "; then
+    printf "\n"
+    brew upgrade
+  else
+    printf "\n"
+    brew pin herdr >/dev/null
+    brew upgrade
+    brew unpin herdr >/dev/null
+    printf "${DIM}herdr held back — run 'brew upgrade herdr' when your sessions can take a restart${RESET}\n"
+  fi
+else
+  brew upgrade
+fi
+brew cleanup
 
 section "npm (global)"
 npm update -g
