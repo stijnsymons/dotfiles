@@ -7,4 +7,6 @@ click-repeat-interval = 500
 quit-after-last-window-closed = true
 macos-option-as-alt = left
 macos-titlebar-style = hidden
+# brew manages updates; don't check or nag in-app
+auto-update = off
 keybind = cmd+backspace=ignore
