@@ -191,6 +191,9 @@ pane_gaps = false
 
 # Background notification popup delivery
 agent_panel_sort = "priority"
+
+# Hide the tab row when a workspace has exactly one tab.
+hide_tab_bar_when_single_tab = true
 [ui.toast]
 # off = disable pop-up notifications
 # herdr = show in-app toasts
