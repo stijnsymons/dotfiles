@@ -122,6 +122,9 @@ alias g='git add . && git commit && git push'
 alias gs='git status -sb'
 alias gd='git diff'
 
+# workmux
+alias wm='workmux'
+
 #-------------------------------------------------------------------------------
 # Fuzzy finder (https://github.com/junegunn/fzf)
 #-------------------------------------------------------------------------------

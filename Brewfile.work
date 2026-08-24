@@ -1,121 +1,15 @@
-# Agent multiplexer that lives in your terminal
-# Android SDK component
-# Anthropic's official Claude AI desktop app
-# API development platform hosted in Europe
-# App to write, plan, collaborate, and get organised
-# Application uninstaller
-# Bash, Zsh and Fish completion for Docker
-# Blazing fast terminal file manager written in Rust, based on async I/O
-# Blazing fast terminal-ui for git written in rust
-# Bourne-Again SHell, a UNIX command interpreter
-# CLI for Drive, Gmail, Calendar, Sheets, Docs, Chat, Admin, and more
-# CLI for Mermaid library
-# CLI proxy to minimize LLM token consumption
-# Client for the Google Drive storage service
-# Clone of cat(1) with syntax highlighting and Git integration
-# Collaboration platform for API development
-# Collaborative team software
-# Command-line DNS Client for Humans
-# Command-line fuzzy finder written in Go
-# Command-line interface for Vercel
-# Command-line shell and scripting language
-# Connect to Windows
-# Control your tools with a few keystrokes
-# Cross-shell prompt for astronauts
-# Desktop client for GitHub repositories
-# Diff that understands syntax
-# Disk usage analyzer with console interface written in Go
-# Display and control your Android device
-# Distributed revision control system
-# E-books management software
-# Editor for designing and documenting APIs
-# Embeddable SQL OLAP Database Management System
-# Executes a program periodically, showing output fullscreen
-# Extremely fast Python package installer and resolver, written in Rust
-# Fast, async, resource-friendly link checker
-# Feature-rich command-line audio/video downloader
-# Feature-rich interactive Jira CLI
-# Fish completion for brew-cask
-# Fish shell like syntax highlighting for zsh
-# Fish-like fast/unobtrusive autosuggestions for zsh
-# Free and open-source media player
-# Get a file from an HTTP, HTTPS or FTP server
-# GitHub command-line tool
-# GNU File, Shell, and Text utilities
-# GNU implementation of the famous stream editor
-# Highly capable, feature-rich programming language
-# HTTP debugging proxy
-# Interpreted, interactive, object-oriented programming language
-# Knowledge base that works on top of a local folder of plain text Markdown files
-# Lightweight and flexible command-line JSON processor
-# Meet, chat, call, and collaborate in just one place
-# Microsoft Azure CLI 2.0
-# Microsoft SQL Server command-line interface
-# Modern, maintained replacement for ls
-# Multiplayer code editor
-# Music streaming service
-# Native desktop client for WhatsApp
-# Native GUI tool for relational databases
-# Official Amazon AWS command-line interface
-# Open source programming language to build simple/reliable/efficient software
-# Open-source BitTorrent client
-# Open-source code editor
-# Open-source, cross-platform JavaScript runtime environment
-# Pack, ship and run any application as a lightweight container
-# Password manager that keeps all passwords secure behind one password
-# Presentation software
-# Provides updates to various Microsoft products
-# Quick Look generator for Markdown files
-# Quick Look plugin for mobile apps and provisioning profiles
-# Real-time type-ahead completion for Zsh
-# Remote access and connectivity software focused on security
-# Render markdown on the CLI
-# Replace zsh completion selection menu with fzf
-# Resource monitor. C++ version and continuation of bashtop and bpytop
-# Rsync for cloud storage
-# Safe, concurrent, practical language
-# Screen and video recording software
-# Search tool like grep and The Silver Searcher
-# Server and cloud storage browser
-# Set of tools to manage resources and applications hosted on Google Cloud
-# Shell extension to navigate your filesystem faster
-# Shows the next meeting in the menu bar
-# Simple, fast and user-friendly alternative to find
-# SMART hard drive monitoring
-# Spreadsheet software
-# Successor of GNU Wget, a file and recursive website downloader
-# Swiss-army knife of markup format conversion
-# Team communication and collaboration software
-# Terminal emulator that uses platform-native UI and GPU acceleration
-# Terminal JSON viewer
-# Terminal multiplexer
-# Terminal-based AI coding assistant
-# Test localhost and staging websites
-# Text editor for code, markup and prose
-# Thumbnails, static previews, cover art and metadata for video files
-# Tool to hide menu bar icons
-# Tool to optimise images to a smaller size
-# Tools for and transforming and inspecting PDF files
-# Unpacks archive files
-# Utility to hide menu bar items
-# Vi 'workalike' with many additional features
-# Video communication and virtual meeting platform
-# View, Screen Share, organise, import, and download files to a reMarkable device
-# Virtualization tool
-# Voice-to-text dictation with AI-powered auto-editing
-# VPN client for secure internet access and private browsing
-# Web browser
-# Word processor
+tap "homebrew/core"
+tap "microsoft/mssql-release", "https://github.com/Microsoft/homebrew-mssql-release"
+tap "pchuri/tap"
 brew "awscli"
 brew "azure-cli"
-brew "docker", link: false
 brew "googleworkspace-cli"
 brew "jira-cli"
 brew "mermaid-cli"
 brew "powershell"
 brew "scrcpy"
 brew "sqlcmd"
-brew "vercel-cli"
+brew "vercel"
 brew "watch"
 brew "yt-dlp"
 cask "android-platform-tools"
@@ -141,15 +35,11 @@ cask "tableplus"
 cask "teamviewer"
 cask "the-unarchiver"
 cask "vanilla"
-cask "virtualbuddy"
 cask "visual-studio-code"
-cask "whatsapp@beta"
 cask "windows-app"
 npm "apidog-cli"
 npm "defuddle-cli"
-tap "homebrew/core"
-tap "microsoft/mssql-release", "https://github.com/Microsoft/homebrew-mssql-release"
-tap "pchuri/tap"
+npm "mermaid-filter"
 uv "markdown-to-confluence"
 vscode "alefragnani.project-manager"
 vscode "altimateai.vscode-altimate-mcp-server"
@@ -171,6 +61,7 @@ vscode "gruntfuggly.todo-tree"
 vscode "hashicorp.terraform"
 vscode "inferrinizzard.prettier-sql-vscode"
 vscode "innoverio.vscode-dbt-power-user"
+vscode "janisdd.vscode-edit-csv"
 vscode "jebbs.plantuml"
 vscode "marp-team.marp-vscode"
 vscode "mechatroner.rainbow-csv"
@@ -188,8 +79,8 @@ vscode "mushan.vscode-paste-image"
 vscode "pkief.material-icon-theme"
 vscode "redocly.openapi-vs-code"
 vscode "samuelcolvin.jinjahtml"
-vscode "streetsidesoftware.code-spell-checker-dutch"
 vscode "streetsidesoftware.code-spell-checker"
+vscode "streetsidesoftware.code-spell-checker-dutch"
 vscode "usernamehw.errorlens"
 vscode "william-voyek.vscode-nginx"
 vscode "yoavbls.pretty-ts-errors"
