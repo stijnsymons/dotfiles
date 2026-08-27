@@ -2,8 +2,16 @@ set nocompatible              " be iMproved, required
 filetype off                  " required
 
 " vim-plug -------------------------------------------------------------------
+" Bootstrap vim-plug itself if this machine has never had it, so a fresh clone
+" of the dotfiles needs nothing but vim and curl to come up working.
+let s:plug_path = expand('~/.vim/autoload/plug.vim')
+if empty(glob(s:plug_path))
+  silent execute '!curl -fLo ' . shellescape(s:plug_path) . ' --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+  autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+endif
+
 call plug#begin('~/.vim/plugged')
-Plug 'ayu-theme/ayu-vim'
+Plug 'catppuccin/vim', { 'as': 'catppuccin' }   " theme (latte/frappe/macchiato/mocha)
 Plug '/opt/homebrew/opt/fzf' | Plug 'junegunn/fzf.vim'                " navigation
 Plug 'itchyny/lightline.vim'                    " lightweight statusline
 "Plug 'tpope/vim-fugitive'                       " git stuff
@@ -42,11 +50,41 @@ set splitright                                  " Splits go to the right by defa
 
 " Theme ----------------------------------------------------------------------
 set termguicolors     " enable true colors support
-"let ayucolor="light"  " for light version of theme
-let ayucolor="mirage" " for mirage version of theme
-"let ayucolor="dark"   " for dark version of theme
-set background=dark
-colorscheme ayu
+
+" Follow the macOS appearance: Catppuccin Latte in light, Macchiato in dark.
+" Re-checked on FocusGained, so flipping appearance recolours an already-open
+" vim the moment you click back into it, rather than waiting on the launchd
+" poll. `defaults read` costs ~10ms and only runs on focus.
+" silent! on the colorscheme so a fresh machine, before PlugInstall has run,
+" still opens instead of dying with E185: Cannot find color scheme.
+function! s:SyncAppearance(...) abort
+  let l:dark = has('macunix')
+        \ && system('defaults read -g AppleInterfaceStyle 2>/dev/null') =~? 'dark'
+  let l:bg = l:dark ? 'dark' : 'light'
+  let l:cs = l:dark ? 'catppuccin_macchiato' : 'catppuccin_latte'
+
+  if get(g:, 'colors_name', '') !=# l:cs || &background !=# l:bg
+    let &background = l:bg
+    silent! execute 'colorscheme' l:cs
+  endif
+
+  " lightline caches its palette, so it needs an explicit rebuild
+  if exists('g:lightline') && get(g:lightline, 'colorscheme', '') !=# l:cs
+    let g:lightline.colorscheme = l:cs
+    if exists('*lightline#init')
+      call lightline#init()
+      call lightline#colorscheme()
+      call lightline#update()
+    endif
+  endif
+endfunction
+
+augroup AppearanceSync
+  autocmd!
+  autocmd VimEnter,FocusGained * call s:SyncAppearance()
+augroup END
+
+call s:SyncAppearance()
 
 " Plugins --------------------------------------------------------------------
 
@@ -63,6 +101,7 @@ let g:fzf_action = {
 
 " lightline
 let g:lightline = {
+      \ 'colorscheme': 'catppuccin_latte',
       \ 'active': {
       \   'left': [ [ 'mode', 'paste' ],
       \             [ 'filename', 'modified' ] ,
