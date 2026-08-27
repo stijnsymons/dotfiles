@@ -26,8 +26,10 @@ onboarding = false
 # red = "#ff6188"
 # green = "#a6e3a1"
 
-name = "catppuccin"
-auto_switch = false
+name = "catppuccin-latte"
+auto_switch = true
+light_name = "catppuccin-latte"
+dark_name = "catppuccin"
 [terminal]
 # Executable used for new interactive panes.
 # Empty means $SHELL, then /bin/sh.

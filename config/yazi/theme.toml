@@ -1,0 +1,7 @@
+# Yazi picks light/dark from the terminal background it detects at startup,
+# so this follows Ghostty, which in turn follows macOS. Nothing to reload.
+# Flavors themselves are pinned in package.toml; restore them on a new
+# machine with: ya pkg install
+[flavor]
+light = "catppuccin-latte"
+dark  = "catppuccin-macchiato"
