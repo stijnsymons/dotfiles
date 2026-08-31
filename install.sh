@@ -64,8 +64,27 @@ done
 
 # wire up the ~/.config tree. linked per file rather than per directory, so
 # apps keep their own state alongside ours (zed/themes, zed/prompts, ...)
+#
+# Trees that are already linked wholesale (~/.config/nvim, ~/.config/sketchybar)
+# are skipped. Without this the per-file loop resolves the target THROUGH the
+# directory symlink onto the real file in this repo, backs that file up, and
+# then links the now-vacant name to itself - ELOOP, and the config is gone.
+# Detected structurally rather than by name so a future dir symlink is safe too.
+through_symlink()
+{
+	dir="`dirname "$1"`"
+	while [ "$dir" != "$HOME" ] && [ "$dir" != "/" ] && [ -n "$dir" ]; do
+		[ -h "$dir" ] && return 0
+		dir="`dirname "$dir"`"
+	done
+	return 1
+}
+
 find config -type f ! -name '.DS_Store' | while read -r file; do
 	target="$HOME/.$file"
+	if through_symlink "$target"; then
+		continue
+	fi
 	mkdir -p "`dirname "$target"`"
 	link_and_backup "$PWD/$file" "$target"
 done
