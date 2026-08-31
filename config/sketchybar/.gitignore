@@ -1,0 +1,9 @@
+# Compiled Swift helpers: sources are tracked, binaries are built on startup
+# by bin/build.sh. Ignore everything in bin/ except the sources and scripts,
+# so a new helper cannot slip in as a committed binary.
+bin/*
+!bin/*.swift
+!bin/*.sh
+
+# Local backups from the Kanagawa -> Tokyo Night switch
+*.bak

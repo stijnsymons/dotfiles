@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+# Tokyo Night Storm, plain bar (no islands/pills).
+# Docs: https://felixkratz.github.io/SketchyBar/config/bar
+
+PLUGIN_DIR="$CONFIG_DIR/plugins"
+source "$CONFIG_DIR/colors.sh"
+
+##### Display metrics #####
+# Queried instead of hardcoded so the bar fits any Mac. BAR_HEIGHT is the
+# reserved top inset (38pt notched, 24pt not); NOTCH_L/NOTCH_R bound the region
+# where items are invisible behind the notch (0 0 when there is no notch).
+# Compile bin/*.swift if missing or stale (no-op once built).
+"$CONFIG_DIR/bin/build.sh"
+
+read -r BAR_HEIGHT NOTCH_L NOTCH_R SCREEN_W <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
+: "${BAR_HEIGHT:=38}" "${NOTCH_L:=0}" "${NOTCH_R:=0}" "${SCREEN_W:=0}"
+
+##### Fonts and measured widths #####
+# The width constants below were MEASURED against these exact font sizes (fixed
+# widths stop the bar re-laying out as digit counts change). If you change a
+# size, re-measure: set the label to its widest value with label.width=-1, read
+# the item width, and use the difference. check.sh asserts no clipping.
+FONT_ICON="Hack Nerd Font"
+FONT_TEXT="FiraMono Nerd Font"
+SZ_ICON=15.0          # default icon glyphs
+SZ_LABEL=12.0         # default labels
+SZ_NET=9.0            # stacked two-row items (net throughput, cpu/mem)
+W_PCT=35              # widest "100%"  at SZ_LABEL
+W_SYS=20              # widest "100%"  at SZ_NET (stacked cpu/mem rows)
+W_NET=31              # widest "99.9M" at SZ_NET
+W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
+                      # 154 -> 200 (+30%). 35 chars x 5.70pt at FiraMono/SZ_LABEL.
+                      # Headroom exists only because cpu/mem stack into one column;
+                      # check.sh asserts the cluster still clears the notch.
+SYS_ROW=34            # one cpu/mem row: icon + W_SYS. Same stacking trick as
+                      # NET_ROW below - re-measure if the font or width changes.
+NET_ROW=44            # one throughput row: icon + W_NET. Negative padding of
+                      # this size stacks the two rows into one column.
+
+##### Bar #####
+# Solid full-width bar flush to the top edge. No y_offset/margin = no floating.
+sketchybar --bar height="$BAR_HEIGHT" \
+                 position=top \
+                 y_offset=0 \
+                 margin=0 \
+                 corner_radius=0 \
+                 border_width=0 \
+                 color="$BAR_COLOR" \
+                 blur_radius=0 \
+                 shadow=off \
+                 sticky=on \
+                 topmost=off \
+                 padding_left=8 \
+                 padding_right=8
+
+##### Item defaults #####
+default=(
+  icon.font="$FONT_ICON:Bold:$SZ_ICON"
+  label.font="$FONT_TEXT:Regular:$SZ_LABEL"
+  icon.color="$FG"
+  label.color="$FG"
+  icon.padding_left=6
+  icon.padding_right=6
+  label.padding_left=0
+  label.padding_right=6
+  padding_left=0
+  padding_right=0
+  background.drawing=off
+)
+sketchybar --default "${default[@]}"
+
+# Thin vertical rule between groups, replaces the old island gaps.
+separator=(
+  icon="│"
+  icon.font="$FONT_TEXT:Regular:13.0"
+  icon.color="$SEPARATOR"
+  icon.padding_left=4
+  icon.padding_right=4
+  label.drawing=off
+  background.drawing=off
+  click_script=""
+)
+
+##### Left: power menu | focused app #####
+
+# Power menu. Items are added to the popup via the "popup.power" position.
+sketchybar --add item power left \
+           --set power icon="$(printf '\357\205\271')" \
+                       icon.color="$FG" \
+                       icon.font="$FONT_ICON:Bold:18.0" \
+                       label.drawing=off \
+                       popup.background.color="$POPUP_BG" \
+                       popup.background.corner_radius=6 \
+                       popup.background.border_width=1 \
+                       popup.background.border_color="$SEPARATOR" \
+                       popup.background.shadow.drawing=on \
+                       popup.horizontal=off \
+                       popup.height=28 \
+                       popup.align=left \
+                       popup.y_offset=-4 \
+                       click_script="$PLUGIN_DIR/power.sh toggle" \
+                       script="$PLUGIN_DIR/power.sh close" \
+           --subscribe power mouse.exited.global
+
+# No icon.width / label.width here: the popup already normalises every row to
+# the widest one, and a fixed icon.width includes icon.padding_left, so it eats
+# the icon->label gap and leaves the glyph flush against the text.
+power_row=(
+  label.align=left
+  icon.padding_left=12
+  icon.padding_right=10
+  label.padding_left=0
+  label.padding_right=14
+  background.drawing=off
+)
+
+row() { # row() <name> <glyph> <color> <label> <action>
+  sketchybar --add item "power.$1" popup.power \
+             --set "power.$1" "${power_row[@]}" icon="$2" icon.color="$3" label="$4" \
+                              click_script="$PLUGIN_DIR/power.sh $5"
+}
+
+row about    "󰋽" "$BLUE"   "About This Mac"  about
+row settings "󰒓" "$AQUA"   "System Settings" settings
+row appstore "󰟉" "$VIOLET" "App Store"       appstore
+row force    "󰅚" "$PINK"   "Force Quit"      force
+
+# Divider between the "open something" rows and the destructive ones.
+sketchybar --add item power.div popup.power \
+           --set power.div icon="────────────" \
+                           icon.font="$FONT_TEXT:Regular:10.0" \
+                           icon.color="$SEPARATOR" \
+                           icon.padding_left=12 \
+                           label.drawing=off \
+                           background.drawing=off \
+                           click_script="$PLUGIN_DIR/power.sh close"
+
+row lock     "󰌾" "$BLUE"   "Lock"      lock
+row sleep    "󰒲" "$VIOLET" "Sleep"     sleep
+row logout   "󰍃" "$YELLOW" "Log Out"   logout
+row restart  "󰜉" "$ORANGE" "Restart"   restart
+row shutdown "󰐥" "$RED"    "Shut Down" shutdown
+
+sketchybar --add item sep.power left --set sep.power "${separator[@]}"
+
+sketchybar --add item front_app left \
+           --set front_app icon.color="$PINK" \
+                           label.max_chars=25 \
+                           label.font="$FONT_TEXT:Regular:13.0" \
+                           script="$PLUGIN_DIR/front_app.sh" \
+           --subscribe front_app front_app_switched
+
+sketchybar --add item sep.now left --set sep.now "${separator[@]}"
+
+# Current meeting (hides itself when nothing is running).
+#
+# Left cluster on purpose: this and `productive` are the two wide text items,
+# and the right cluster clears the notch by only ~26pt at 1512x982 (see README).
+# Putting them right would fail that clearance exactly when a meeting is on
+# screen -- i.e. never during a check run, only mid-call.
+#
+# The only item that touches the network, hence update_freq=60 and not less.
+# meeting.sh caches the event JSON, so meeting_click.sh joins the call without a
+# second API round-trip. system_woke refreshes on lid-open rather than leaving
+# up to a minute of stale "N min left" on screen.
+sketchybar --add item meeting left \
+           --set meeting drawing=off \
+                         icon.color="$GREEN" \
+                         label.color="$FG" \
+                         label.font="$FONT_TEXT:Regular:13.0" \
+                         label.max_chars=14 \
+                         label.width="$W_MEETING" \
+                         scroll_texts=on \
+                         label.scroll_duration=300 \
+                         update_freq=60 \
+                         click_script="$PLUGIN_DIR/meeting_click.sh" \
+                         script="$PLUGIN_DIR/meeting.sh" \
+           --subscribe meeting system_woke
+
+# Divider between the two "right now" items. meeting.sh hides this alongside
+# itself on the failed-fetch path, so a hidden meeting never leaves a rule
+# dangling against the front_app separator.
+sketchybar --add item sep.timing left --set sep.timing "${separator[@]}"
+
+# Productive.io timer. Red when nothing is being timed -- that is the whole
+# point of the item, so it must never be mistaken for a quiet success state.
+# Also network-bound: update_freq=60, cached, click always opens the timesheet.
+sketchybar --add item productive left \
+           --set productive update_freq=60 \
+                            label.color="$FG" \
+                            label.font="$FONT_TEXT:Regular:13.0" \
+                            label.max_chars=20 \
+                            label.width="$W_TIMING" \
+                            scroll_texts=on \
+                            label.scroll_duration=300 \
+                            script="$PLUGIN_DIR/productive.sh" \
+                            click_script="$PLUGIN_DIR/productive_click.sh" \
+           --subscribe productive system_woke
+
+##### Right side, added right-to-left #####
+
+# Clock (rightmost)
+sketchybar --add item clock right \
+           --set clock icon=󰥔 \
+                       icon.color="$VIOLET" \
+                       update_freq=15 \
+                       click_script="open -a Calendar" \
+                       script="$PLUGIN_DIR/clock.sh"
+
+sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
+
+# Mic in use (hidden unless something is capturing)
+sketchybar --add item mic right \
+           --set mic drawing=off \
+                     update_freq=3 \
+                     click_script="open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'" \
+                     script="$PLUGIN_DIR/mic.sh"
+
+# Status: bluetooth | volume | battery
+sketchybar --add item battery right \
+           --set battery label.width="$W_PCT" \
+                         label.align=left \
+                         update_freq=120 \
+                         click_script="open 'x-apple.systempreferences:com.apple.Battery-Settings.extension'" \
+                         script="$PLUGIN_DIR/battery.sh" \
+           --subscribe battery system_woke power_source_change \
+           --add item volume right \
+           --set volume icon.color="$YELLOW" \
+                        label.width="$W_PCT" \
+                        label.align=left \
+                        script="$PLUGIN_DIR/volume.sh" \
+           --subscribe volume volume_change mouse.clicked mouse.scrolled \
+           --add item bluetooth right \
+           --set bluetooth update_freq=60 \
+                           label.drawing=off \
+                           label.max_chars=0 \
+                           click_script="open 'x-apple.systempreferences:com.apple.BluetoothSettings'" \
+                           script="$PLUGIN_DIR/bluetooth.sh"
+
+# Keep-awake toggle. Green mug = our own `caffeinate -i` is holding the machine
+# awake, dim = off. update_freq re-validates the PID, so a caffeinate killed
+# from outside (or a recycled PID) goes gray on its own within 30s.
+sketchybar --add item caffeine right \
+           --set caffeine update_freq=30 \
+                          label.drawing=off \
+                          script="$PLUGIN_DIR/caffeine.sh" \
+                          click_script="$PLUGIN_DIR/caffeine_click.sh"
+
+sketchybar --add item sep.status right --set sep.status "${separator[@]}"
+
+# Network: down/up | wifi SSID
+#
+# net_up / net_down are stacked into one column to halve the horizontal space:
+# equal widths, opposite y_offset, and a negative padding_right on net_down
+# (the left one) pulls it exactly on top of net_up. -44 is one row's width
+# (icon 4+glyph+2, label 31+4) - re-measure it if the font or label.width changes.
+# Positive y_offset moves content UP (verified on screen; the docs do not say).
+#
+# wifi is added AFTER the rows on purpose: the right cluster fills right-to-left,
+# so adding later places it further left - i.e. left of the throughput column.
+sketchybar --add item net_up right \
+           --set net_up icon="󰁝" \
+                        icon.color="$ORANGE" \
+                        icon.font="$FONT_TEXT:Regular:$SZ_NET" \
+                        icon.padding_left=4 \
+                        icon.padding_right=2 \
+                        label="0B" \
+                        label.font="$FONT_TEXT:Regular:$SZ_NET" \
+                        label.width="$W_NET" \
+                        label.align=left \
+                        label.padding_right=4 \
+                        y_offset=6 \
+           --add item net_down right \
+           --set net_down icon="󰁅" \
+                          icon.color="$GREEN" \
+                          icon.font="$FONT_TEXT:Regular:$SZ_NET" \
+                          icon.padding_left=4 \
+                          icon.padding_right=2 \
+                          label="0B" \
+                          label.font="$FONT_TEXT:Regular:$SZ_NET" \
+                          label.width="$W_NET" \
+                          label.align=left \
+                          label.padding_right=4 \
+                          y_offset=-6 \
+                          padding_right="-$NET_ROW" \
+                          update_freq=3 \
+                          script="$PLUGIN_DIR/network.sh"
+
+sketchybar --add item wifi right \
+           --set wifi update_freq=15 \
+                      label.drawing=off \
+                      click_script="open 'x-apple.systempreferences:com.apple.wifi-settings-extension'" \
+                      script="$PLUGIN_DIR/wifi.sh" \
+           --subscribe wifi wifi_change
+
+sketchybar --add item sep.net right --set sep.net "${separator[@]}"
+
+# System: cpu | mem (one script drives both items)
+# cpu / mem stacked into one column, exactly as net_up / net_down below:
+# equal widths, opposite y_offset, and a negative padding_right on mem (the
+# left one) pulls it back on top of cpu. system.sh sets both items by name, so
+# the update_freq and script ride on the bottom row.
+sketchybar --add item cpu right \
+           --set cpu icon="󰻠" \
+                     icon.color="$AQUA" \
+                     icon.font="$FONT_TEXT:Regular:$SZ_NET" \
+                     icon.padding_left=4 \
+                     icon.padding_right=2 \
+                     label="--" \
+                     label.font="$FONT_TEXT:Regular:$SZ_NET" \
+                     label.width="$W_SYS" \
+                     label.align=left \
+                     label.padding_right=4 \
+                     y_offset=6 \
+                     click_script="open -a 'Activity Monitor'" \
+           --add item mem right \
+           --set mem icon="󰍛" \
+                     icon.color="$AQUA" \
+                     icon.font="$FONT_TEXT:Regular:$SZ_NET" \
+                     icon.padding_left=4 \
+                     icon.padding_right=2 \
+                     label="--" \
+                     label.font="$FONT_TEXT:Regular:$SZ_NET" \
+                     label.width="$W_SYS" \
+                     label.align=left \
+                     label.padding_right=4 \
+                     y_offset=-6 \
+                     padding_right="-$SYS_ROW" \
+                     update_freq=10 \
+                     click_script="open -a 'Activity Monitor'" \
+                     script="$PLUGIN_DIR/system.sh"
+
+sketchybar --add item sep.system right --set sep.system "${separator[@]}"
+
+# Media (hides itself when nothing is playing)
+sketchybar --add item media right \
+           --set media icon.color="$GREEN" \
+                       label.color="$FG" \
+                       label.max_chars=35 \
+                       label.width="$W_MEDIA" \
+                       label.align=left \
+                       scroll_texts=off \
+                       update_freq=5 \
+                       script="$PLUGIN_DIR/media.sh" \
+           --subscribe media mouse.clicked media_change
+
+##### Display watcher #####
+# Zero-width item whose only job is to re-fit the bar height when the
+# resolution changes; the startup probe above runs only at config load.
+sketchybar --add item display_watch right \
+           --set display_watch drawing=off \
+                               icon.drawing=off \
+                               label.drawing=off \
+                               script="$PLUGIN_DIR/display.sh" \
+           --subscribe display_watch display_change
+
+##### First paint #####
+sketchybar --update
