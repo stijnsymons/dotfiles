@@ -100,7 +100,6 @@ app_icon() {
     "com.postmanlabs.mac" | Postman | Yaak | HTTPie | *yaak* | *httpie*)             echo "" ;;
     "com.docker.docker" | Docker)                echo "" ;;
     "com.github.GitHubClient" | GitHub\ Desktop) echo "" ;;
-    "com.tinyspeck.slackmacgap" | Slack)         echo "" ;;
     "com.jgraph.drawio.desktop" | draw.io | Figma | "com.figma.Desktop")       echo "" ;;
 
     *)

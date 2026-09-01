@@ -14,6 +14,10 @@ source "$CONFIG_DIR/colors.sh"
 
 read -r BAR_HEIGHT NOTCH_L NOTCH_R SCREEN_W <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
 : "${BAR_HEIGHT:=38}" "${NOTCH_L:=0}" "${NOTCH_R:=0}" "${SCREEN_W:=0}"
+# :=38 does not catch a literal 0, which is what screen-metrics reports on an
+# external primary with the menu bar auto-hidden - a zero-height, invisible bar
+# on reload. Same guard as plugins/display.sh.
+[ "$BAR_HEIGHT" -gt 0 ] 2>/dev/null || BAR_HEIGHT=38
 
 ##### Fonts and measured widths #####
 # The width constants below were MEASURED against these exact font sizes (fixed

@@ -37,6 +37,18 @@ read -r RX TX <<<"$(netstat -ibn -I "${NET_IF:-en0}" | awk 'NR>1 {print $(NF-4),
 [ "${RX:-x}" -ge 0 ] 2>/dev/null && ok "rx counter = $RX" || bad "rx counter not an int (got '$RX')"
 [ "${TX:-x}" -ge 0 ] 2>/dev/null && ok "tx counter = $TX" || bad "tx counter not an int (got '$TX')"
 
+echo "bin/ helpers:"
+# build.sh keeps the last working binary and leaves the compiler's reason in a
+# build-<name>.err it removes on success, so a leftover .err IS the failure.
+for b in screen-metrics mic-active meeting-overlay; do
+  [ -x "$CONFIG_DIR/bin/$b" ] && ok "bin/$b built" || bad "bin/$b missing or not executable"
+done
+BERR=""
+for e in "${XDG_CACHE_HOME:-$HOME/.cache}"/sketchybar/build-*.err; do
+  [ -s "$e" ] && BERR="$BERR $(basename "$e")"
+done
+[ -z "$BERR" ] && ok "no build errors logged" || bad "build failures logged:$BERR"
+
 echo "mic-active:"
 if [ -x "$CONFIG_DIR/bin/mic-active" ]; then
   M="$("$CONFIG_DIR/bin/mic-active")"
@@ -324,9 +336,17 @@ cat > "$CT/teams.json" <<'CHKTEAMS'
 {"summary":"T","end":{"dateTime":"2099-01-01T00:00:00Z"},
  "description":"<a href=\"https://teams.microsoft.com/l/meetup-join/19%3ax/0?context=y\">Join</a>"}
 CHKTEAMS
+# A /s/ SSO link carries a token, not a numeric id. There is no confno to build
+# from it, so it must come back untouched and let the browser handle it.
+cat > "$CT/sso.json" <<'CHKSSO'
+{"summary":"S","end":{"dateTime":"2099-01-01T00:00:00Z"},
+ "conferenceData":{"entryPoints":[{"entryPointType":"video","uri":"https://acme.zoom.us/s/abcToken123"}]}}
+CHKSSO
 CZ="$(MEETING_CACHE="$CT/zoom.json"  "$CONFIG_DIR/plugins/open_conf.sh" --print 2>/dev/null)"
 CM="$(MEETING_CACHE="$CT/teams.json" "$CONFIG_DIR/plugins/open_conf.sh" --print 2>/dev/null)"
+CS="$(MEETING_CACHE="$CT/sso.json"   "$CONFIG_DIR/plugins/open_conf.sh" --print 2>/dev/null)"
 is "zoom -> zoommtg app URI"  "$CZ" "zoommtg://acme.zoom.us/join?confno=99887766&pwd=SEKRIT"
+is "zoom /s/ token stays https" "$CS" "https://acme.zoom.us/s/abcToken123"
 case "$CM" in msteams://teams.microsoft.com/l/meetup-join/*) ok "teams -> msteams app URI" ;;
               *) bad "teams not translated (got '$CM')" ;; esac
 rm -rf "$CT"

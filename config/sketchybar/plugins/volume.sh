@@ -10,8 +10,14 @@ case "$SENDER" in
     osascript -e 'set volume output muted not (output muted of (get volume settings))'
     ;;
   mouse.scrolled)
+    # The direction arrives in $SCROLL_DELTA, not $INFO. Zero is a momentum-end
+    # event: bail before the osascript rather than nudge the volume down.
+    D="${SCROLL_DELTA:-0}"
+    # Tested as a string, not with $(( )): sketchybar formats the delta as a
+    # float and arithmetic would choke on the decimal point.
+    case "$D" in ''|0|-0|0.0*|-0.0*) exit 0 ;; esac
     CUR="$(osascript -e 'output volume of (get volume settings)')"
-    DELTA=$(( ${INFO:-0} > 0 ? 6 : -6 ))
+    case "$D" in -*) DELTA=-6 ;; *) DELTA=6 ;; esac
     NEXT=$(( CUR + DELTA ))
     [ "$NEXT" -gt 100 ] && NEXT=100
     [ "$NEXT" -lt 0 ] && NEXT=0
@@ -20,9 +26,11 @@ case "$SENDER" in
 esac
 
 # volume_change hands the new level in $INFO; anything else we read the system.
+# The mute flag is never in $INFO though, and there is no update_freq to
+# self-correct, so a keyboard mute would stay bright yellow. Ask for it.
 if [ "$SENDER" = "volume_change" ]; then
   VOLUME="$INFO"
-  MUTED="false"
+  MUTED="$(osascript -e 'output muted of (get volume settings)')"
 else
   VOLUME="$(osascript -e 'output volume of (get volume settings)')"
   MUTED="$(osascript -e 'output muted of (get volume settings)')"

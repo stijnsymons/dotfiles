@@ -26,6 +26,12 @@ OVERLAY="${MEETING_OVERLAY:-$CONFIG_DIR/bin/meeting-overlay}"
 LEAD=60                 # announce this many seconds before the start
 WINDOW=$(( LEAD + 60 )) # a tick's worth of look-ahead beyond the lead
 
+# An epoch as HH:MM in the event's own zone. One-off invites often carry no
+# .start.timeZone, only an offset dateTime, and TZ="" means UTC rather than
+# local - which renders them 2h early here - so the assignment is skipped
+# entirely instead of emptied.
+hhmm() { if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r "$1" +%H:%M; fi; }
+
 [ -s "$UPCOMING" ] || exit 0
 [ -x "$OVERLAY" ]  || exit 0
 
@@ -33,7 +39,10 @@ mkdir -p "$(dirname "$SEEN")"; touch "$SEEN"
 NOW="$(date -u +%s)"
 
 # Drop entries whose meeting has already started, so this cannot grow forever.
-awk -v now="$NOW" -F'\t' '$2 + 0 > now' "$SEEN" > "$SEEN.tmp" 2>/dev/null && mv "$SEEN.tmp" "$SEEN"
+# Per-pid tmp: a system_woke run and a timer tick overlap, and a fixed name
+# means one truncates the other's prune mid-write.
+awk -v now="$NOW" -F'\t' '$2 + 0 > now' "$SEEN" > "$SEEN.tmp.$$" 2>/dev/null \
+  && mv "$SEEN.tmp.$$" "$SEEN" || rm -f "$SEEN.tmp.$$"
 
 while IFS= read -r ev; do
   [ -z "$ev" ] && continue
@@ -51,13 +60,12 @@ while IFS= read -r ev; do
   ID="$(jq -r '.id // empty' <<<"$ev")"
   KEY="${ID}:${START}"
   grep -qF "$KEY	" "$SEEN" 2>/dev/null && continue
-  printf '%s\t%s\n' "$KEY" "$START" >> "$SEEN"
 
   # Enrich for the overlay: it renders, it does not re-derive any of this.
-  TZ_EV="$(jq -r '.start.timeZone // "UTC"' <<<"$ev")"
+  TZ_EV="$(jq -r '.start.timeZone // empty' <<<"$ev")"
   END="$(jq -r '._e // empty' <<<"$ev")"
-  WHEN="$(TZ="$TZ_EV" date -r "$START" +%H:%M)"
-  [ -n "$END" ] && WHEN="$WHEN – $(TZ="$TZ_EV" date -r "$END" +%H:%M)"
+  WHEN="$(hhmm "$START" "$TZ_EV")"
+  [ -n "$END" ] && WHEN="$WHEN – $(hhmm "$END" "$TZ_EV")"
 
   N_PEOPLE="$(meeting_people "$ev" | grep -c . || true)"
   case "$TIER" in
@@ -80,11 +88,16 @@ while IFS= read -r ev; do
   PAYLOAD="$(mktemp "$HOME/.cache/sketchybar/announce-XXXXXX")"
   jq -c --arg t "$TIER" --arg w "$WHEN" --arg p "$PEOPLE" --arg l "$LINK" \
      '. + {_tier:$t, _when:$w, _people:$p} + (if $l == "" then {} else {_link:$l} end)' \
-     <<<"$ev" > "$PAYLOAD" 2>/dev/null || continue
+     <<<"$ev" > "$PAYLOAD" 2>/dev/null || { rm -f "$PAYLOAD"; continue; }
 
   # Sleep the remainder so it lands at T-LEAD, not at tick time. Detached, or
   # sketchybar reaps it when the plugin returns.
   DELAY=$(( DELTA - LEAD )); [ "$DELAY" -lt 0 ] && DELAY=0
   nohup sh -c "sleep $DELAY; '$OVERLAY' '$PAYLOAD'; rm -f '$PAYLOAD'" >/dev/null 2>&1 &
   disown 2>/dev/null || true
+
+  # Marked announced only now: a failed enrichment above must not suppress the
+  # overlay forever, which is the one failure this subsystem exists to prevent.
+  # The grep guard higher up still stops a double fire within the same tick.
+  printf '%s\t%s\n' "$KEY" "$START" >> "$SEEN"
 done <<<"$(jq -c '.[]?' "$UPCOMING" 2>/dev/null)"

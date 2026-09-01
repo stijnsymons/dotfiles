@@ -28,6 +28,9 @@ meeting_fetch() {
             orderBy:"startTime", maxResults:25, timeZone:"UTC"}')" 2>/dev/null)"
 
   [ -n "$raw" ] || return 1
+  # _e falls back to the start: Google allows endTimeUnspecified, and one such
+  # event would abort the whole jq - which reads downstream as a failed fetch
+  # and blanks the meeting subsystem for everything else in the window.
   printf '%s' "$raw" | jq -c --arg now "$now" '
     ($now | fromdateiso8601) as $t
     | [ .items[]?
@@ -35,7 +38,7 @@ meeting_fetch() {
         | select(.start.dateTime != null)
         | select([ .attendees[]? | select(.self) | .responseStatus ] | index("declined") | not)
         | . + { _s: (.start.dateTime | fromdateiso8601),
-                _e: (.end.dateTime   | fromdateiso8601) } ]
+                _e: ((.end.dateTime // .start.dateTime) | fromdateiso8601) } ]
     | map(select(._e > $t))
     | sort_by(._s)
   ' 2>/dev/null

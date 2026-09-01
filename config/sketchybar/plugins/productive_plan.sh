@@ -85,6 +85,9 @@ USAGE="$(jq -nc \
   | map(select(.project != ""))')"
 
 # Keep only projects you are booked on this week, most-used service each.
+# Write-then-rename: redirecting straight into $CACHE truncates it before jq
+# runs, so a failing jq leaves an empty file, `[ -s "$CACHE" ]` never passes
+# again and this refetches (2 CLI + 2 API calls) every 60s forever.
 jq -nc --argjson projects "$PROJECTS" --argjson usage "$USAGE" '
   $projects
   | map(. as $p
@@ -94,4 +97,4 @@ jq -nc --argjson projects "$PROJECTS" --argjson usage "$USAGE" '
           service_id: $cand[0].service_id, service: $cand[0].service,
           booked_role: $p.booked_role, uses: $cand[0].uses })
   | sort_by(.project)
-' > "$CACHE" 2>/dev/null
+' > "$CACHE.tmp.$$" 2>/dev/null && mv "$CACHE.tmp.$$" "$CACHE" || rm -f "$CACHE.tmp.$$"

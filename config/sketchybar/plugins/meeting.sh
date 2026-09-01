@@ -52,9 +52,12 @@ mkdir -p "$(dirname "$CACHE")"
 VIDEO="󰕧"   # nf-md-video      - meeting with a join link
 ROOM="󰃭"    # nf-md-calendar   - meeting without one
 
-# Could not determine the state: show nothing rather than assert anything.
+# Could not determine the state: show nothing rather than assert anything. The
+# cache is deliberately left alone - this path runs on any transient failure,
+# and overwriting it with null would both lose the join link for a rejoin click
+# mid-meeting and poison the offline fallback into asserting an empty calendar.
+# Only idle(), which did see the calendar, writes null.
 hide() {
-  printf 'null\n' > "$CACHE"
   sketchybar --set "$ITEM" drawing=off --set sep.timing drawing=off
   exit 0
 }
@@ -92,7 +95,10 @@ else
     NOW_TS="$(date -u +%s)"
     EVENT="$(jq -c --argjson t "$NOW_TS" 'map(select(._s <= $t and ._e > $t)) | .[0] // "null"' <<<"$WINDOW" 2>/dev/null)"
     [ "$EVENT" = '"null"' ] && EVENT="null"
-    jq -c --argjson t "$NOW_TS" 'map(select(._s > $t))' <<<"$WINDOW" > "$UPCOMING" 2>/dev/null
+    # Write-then-rename: the card and the announcer read this file on their own
+    # schedule and must never catch it half-written.
+    jq -c --argjson t "$NOW_TS" 'map(select(._s > $t))' <<<"$WINDOW" > "$UPCOMING.tmp.$$" 2>/dev/null \
+      && mv "$UPCOMING.tmp.$$" "$UPCOMING" || rm -f "$UPCOMING.tmp.$$"
     # Schedule the 1-minute overlay off the freshly written list. Runs on every
     # tick and dedups internally, so a missed tick just means the next one
     # picks the meeting up.
@@ -128,7 +134,9 @@ if [ "$END" -le "$NOW" ]; then                      # cached event already over
   [ "$STALE" -eq 1 ] && hide                        # offline: cannot know what replaced it
   idle
 fi
-[ "$STALE" -eq 0 ] && printf '%s\n' "$EVENT" > "$CACHE"
+if [ "$STALE" -eq 0 ]; then                         # same write-then-rename
+  printf '%s\n' "$EVENT" > "$CACHE.tmp.$$" && mv "$CACHE.tmp.$$" "$CACHE" || rm -f "$CACHE.tmp.$$"
+fi
 
 MINS=$(( (END - NOW + 59) / 60 ))
 [ "$MINS" -lt 0 ] && MINS=0

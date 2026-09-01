@@ -20,7 +20,9 @@ LINK="$("$CONFIG_DIR/plugins/meeting_click.sh" --print 2>/dev/null)"
 case "$LINK" in
   *zoom.us/j/*|*zoom.us/w/*|*zoom.us/s/*)
     HOST="$(printf '%s' "$LINK" | sed -E 's|^https?://([^/]+)/.*|\1|')"
-    ID="$(printf '%s'   "$LINK" | sed -E 's|^https?://[^/]+/[jws]/([0-9]+).*|\1|')"
+    # -n/p, so a non-numeric /s/ SSO link yields nothing and falls through to
+    # the browser instead of coming back whole as a bogus confno=https://...
+    ID="$(printf '%s'   "$LINK" | sed -nE 's|^https?://[^/]+/[jws]/([0-9]+).*|\1|p')"
     PWD_Q="$(printf '%s' "$LINK" | sed -nE 's|.*[?&]pwd=([^&]+).*|\1|p')"
     if [ -n "$ID" ]; then
       URI="zoommtg://$HOST/join?confno=$ID"

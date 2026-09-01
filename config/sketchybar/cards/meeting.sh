@@ -5,6 +5,12 @@
 # colors.sh and fit.sh.
 source "$CONFIG_DIR/plugins/meeting_lib.sh"
 #
+# An epoch as HH:MM in the event's own zone. One-off invites often carry no
+# .start.timeZone, only an offset dateTime, and TZ="" means UTC rather than
+# local - which renders them 2h early here - so the assignment is skipped
+# entirely instead of emptied.
+meeting_hhmm() { if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r "$1" +%H:%M; fi; }
+#
 # Row actions: the conference row launches Zoom/Teams natively; every other row
 # points Brave's pinned calendar tab at this event's htmlLink, so a click lands
 # on the meeting's details rather than just today's grid.
@@ -31,12 +37,12 @@ card_rows() {
   local cal="$CONFIG_DIR/plugins/brave_tab.sh 2"
   [ -n "$detail" ] && cal="$cal 'https://calendar.google.com/calendar/u/0/r/eventedit/$detail'"
   printf '󰃭\t%s\t%s\t%s\n' "$BLUE" "$(card_text "$(jq -r '(.summary // "(no title)")|gsub("\\s+";" ")' <<<"$ev")")" "$cal"
-  tz="$(jq -r '.start.timeZone // "UTC"' <<<"$ev")"
+  tz="$(jq -r '.start.timeZone // empty' <<<"$ev")"
   read -r s e <<<"$(jq -r '[(.start.dateTime|fromdateiso8601),(.end.dateTime|fromdateiso8601)]|@tsv' <<<"$ev" 2>/dev/null)"
   if [ -n "${s:-}" ] && [ -n "${e:-}" ]; then
     mins=$(( (e - $(date +%s) + 59) / 60 )); [ "$mins" -lt 0 ] && mins=0
     printf '󰅐\t%s\t%s – %s  ·  %sm left\t%s\n' "$FG_DIM" \
-      "$(TZ="$tz" date -r "$s" +%H:%M)" "$(TZ="$tz" date -r "$e" +%H:%M)" "$mins" "$cal"
+      "$(meeting_hhmm "$s" "$tz")" "$(meeting_hhmm "$e" "$tz")" "$mins" "$cal"
   fi
   # Reuse the click resolver so the card cannot advertise a different link.
   link="$(MEETING_CACHE="$cache" "$CONFIG_DIR/plugins/meeting_click.sh" --print 2>/dev/null)"
@@ -75,11 +81,11 @@ meeting_upcoming_rows() {
     [ -z "$ev" ] && continue
     tier="$(meeting_tier "$ev")"
     color="$(meeting_tier_color "$tier")"
-    tz="$(jq -r '.start.timeZone // "UTC"' <<<"$ev")"
+    tz="$(jq -r '.start.timeZone // empty' <<<"$ev")"
     start="$(jq -r '._s // empty' <<<"$ev")"
     [ -n "$start" ] || continue
     printf '󰃰\t%s\t%s  ·  %s\t%s\n' "$color" \
-      "$(TZ="$tz" date -r "$start" +%H:%M)" \
+      "$(meeting_hhmm "$start" "$tz")" \
       "$(card_text "$(jq -r '(.summary // "(no title)") | gsub("\\s+"; " ")' <<<"$ev")")" \
       "$(meeting_event_link "$ev")"
   done <<<"$(jq -c '.[]?' "$up" 2>/dev/null)"

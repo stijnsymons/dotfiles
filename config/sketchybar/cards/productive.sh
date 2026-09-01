@@ -12,7 +12,7 @@ source "$CONFIG_DIR/plugins/productive_colors.sh"
 card_rows() {
   local cache="${PRODUCTIVE_CACHE:-$HOME/.cache/sketchybar/productive.json}"
   local tab="$CONFIG_DIR/plugins/brave_tab.sh 3"
-  local j started when note
+  local j started iso when note
   j="$(cat "$cache" 2>/dev/null)"
 
   if [ -z "$j" ] || [ "$(jq -r '.running // false' <<<"$j" 2>/dev/null)" != "true" ]; then
@@ -30,7 +30,12 @@ card_rows() {
 
   started="$(jq -r '.started_at // empty' <<<"$j")"
   if [ -n "$started" ]; then
-    when="$(date -jf '%Y-%m-%dT%H:%M:%S' "${started%%[.+Z]*}" +%H:%M 2>/dev/null)"
+    # started_at carries a zone. Truncating it and parsing with a naive format
+    # reads UTC as local and shows a 09:12 CEST start as 07:12, so parse the
+    # offset: Z -> +0000, no fractional seconds, no colon in the offset.
+    iso="$(printf '%s' "$started" | sed -E 's/\.[0-9]+//; s/Z$/+0000/; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')"
+    when="$(date -jf '%Y-%m-%dT%H:%M:%S%z' "$iso" +%H:%M 2>/dev/null)"
+    [ -n "$when" ] || when="$(date -jf '%Y-%m-%dT%H:%M:%S' "${started%%[.+Z]*}" +%H:%M 2>/dev/null)"
     printf '󰄉\t%s\tstarted %s\t%s\n' "$FG_DIM" "${when:-$started}" "$tab"
   fi
 
