@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Wi-Fi SSID. `networksetup -getairportnetwork` is broken since macOS 15,
 # so read the SSID out of ipconfig's interface summary instead.
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 # Hover dispatch, before anything expensive: sketchybar invokes this same

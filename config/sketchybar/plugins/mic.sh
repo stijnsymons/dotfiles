@@ -4,6 +4,7 @@
 #
 # The helper is compiled by bin/build.sh at startup, so a fresh clone needs no
 # manual build step (binaries are gitignored; only the .swift sources tracked).
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 

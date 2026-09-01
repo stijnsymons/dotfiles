@@ -17,10 +17,13 @@
 #     blip does not blink the meeting away mid-call.
 #
 # gws-now exits 1 for "no meeting", so this script must not use `set -e`.
+# `set -u` is orthogonal to that and stays on: every sketchybar-supplied
+# variable read here is guarded, so an unset one is a bug, not a state.
 #
 # Test seams: MEETING_FIXTURE=<file.json> reads an event from disk instead of
 # hitting Google; MEETING_CACHE=<file.json> redirects the cache. Used by
 # check.sh and for offline development.
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 

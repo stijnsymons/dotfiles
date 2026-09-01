@@ -7,10 +7,18 @@
 #           screenLock delay is 3600s, so the screensaver would blank the
 #           display without actually locking it.
 #   force - Cmd+Opt+Esc, the Force Quit dialog.
+#
+# Test seam, mirroring meeting_click.sh's --print: --list-actions names the
+# actions this script handles, one per line, so check.sh can assert the set
+# without reading the case arms - reindenting one is not a regression.
+set -u
+
+ACTIONS=(toggle close about settings appstore force lock sleep logout restart shutdown)
+[ "${1:-}" = "--list-actions" ] && { printf '%s\n' "${ACTIONS[@]}"; exit 0; }
 
 close() { sketchybar --set power popup.drawing=off; }
 
-case "$1" in
+case "${1:-}" in
   toggle)   sketchybar --set power popup.drawing=toggle ;;
   close)    close ;;
 

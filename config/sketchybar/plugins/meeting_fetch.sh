@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # One windowed calendar fetch, shared by the item, the card and the announcer.
 #
 # meeting.sh used to call gws-now, which answers only "what am I in right now".
@@ -17,12 +18,18 @@ MEETING_WINDOW_HOURS="${MEETING_WINDOW_HOURS:-12}"
 # Prints nothing at all when the call fails (vs "[]" for a genuinely clear
 # calendar) - meeting.sh depends on telling those two apart.
 meeting_fetch() {
-  local cal now until raw
+  local cal now until raw tmo
   cal="${GWS_NOW_CALENDAR:-primary}"
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   until="$(date -u -v+"${MEETING_WINDOW_HOURS}"H +%Y-%m-%dT%H:%M:%SZ)"
 
-  raw="$(timeout 20 gws calendar events list --params "$(jq -nc \
+  # timeout is Homebrew coreutils; stock macOS has none. Without it the whole
+  # call used to fail to even start, which reads downstream as "the fetch
+  # failed" and hides the item - indistinguishable from an auth problem. A
+  # missing timeout costs the hang watchdog, not the meeting feature.
+  tmo="$(command -v timeout || true)"
+
+  raw="$(${tmo:+"$tmo" 20} gws calendar events list --params "$(jq -nc \
           --arg cal "$cal" --arg min "$now" --arg max "$until" \
           '{calendarId:$cal, timeMin:$min, timeMax:$max, singleEvents:true,
             orderBy:"startTime", maxResults:25, timeZone:"UTC"}')" 2>/dev/null)"

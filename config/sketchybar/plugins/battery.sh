@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 

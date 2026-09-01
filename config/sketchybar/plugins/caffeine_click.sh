@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Click handler for the keep-awake item: toggles our own `caffeinate -i`
 # and repaints the item straight away.
+set -u
 
 CAFFEINE_LIB=1 source "$CONFIG_DIR/plugins/caffeine.sh"
 

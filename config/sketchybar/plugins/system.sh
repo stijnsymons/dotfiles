@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # One script, two items: cpu + mem. Runs on the cpu item's update_freq.
+#
+# pipefail matters here: the readings are `ps | awk` and `memory_pressure | awk`
+# pipelines, and a failing left side would otherwise hand awk nothing and paint
+# a confident 0% over a machine that is actually busy.
+set -u
+set -o pipefail
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/sys_lib.sh"

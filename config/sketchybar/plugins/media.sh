@@ -8,6 +8,7 @@
 #
 # Glyphs are UTF-8 octal escapes so no encoding step can drop them:
 # U+F04B play, U+F04C pause. (bash 3.2 printf has no \u.)
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 # Hover dispatch, before anything expensive: sketchybar invokes this same
@@ -25,19 +26,21 @@ update() {
 $RAW
 RAWEOF
 
-  if [ -z "$TITLE" ] || [ "$TITLE" = "null" ]; then
+  # ${VAR:-}: the reads above never ran if the here-document itself could not be
+  # created, and "no session" is the right reading of that, not a crash.
+  if [ -z "${TITLE:-}" ] || [ "$TITLE" = "null" ]; then
     sketchybar --set media drawing=off
     return
   fi
 
-  if [ "$RATE" = "1" ]; then
+  if [ "${RATE:-}" = "1" ]; then
     ICON="$PLAY"; ICON_COLOR="$GREEN"
   else
     ICON="$PAUSE"; ICON_COLOR="$FG_DIM"
   fi
 
   LABEL="$TITLE"
-  if [ -n "$ARTIST" ] && [ "$ARTIST" != "null" ]; then
+  if [ -n "${ARTIST:-}" ] && [ "$ARTIST" != "null" ]; then
     LABEL="$TITLE — $ARTIST"
   fi
 
@@ -52,14 +55,14 @@ QEOF
 
   # No label means no active session. nowplaying-cli would fall through to
   # Music.app and launch it, so bail out instead.
-  if [ -z "$LABEL_NOW" ]; then
+  if [ -z "${LABEL_NOW:-}" ]; then
     sketchybar --set media drawing=off
     return
   fi
 
   # Optimistic flip: instant feedback, reconciled by update() below and by the
   # media_change event if some other app changed the state underneath us.
-  if [ "$ICON_NOW" = "$PLAY" ]; then
+  if [ "${ICON_NOW:-}" = "$PLAY" ]; then
     sketchybar --set media icon="$PAUSE" icon.color="$FG_DIM"
   else
     sketchybar --set media icon="$PLAY" icon.color="$GREEN"
@@ -70,7 +73,7 @@ QEOF
   update
 }
 
-case "$SENDER" in
+case "${SENDER:-}" in
   mouse.clicked) toggle ;;
   *)             update ;;
 esac

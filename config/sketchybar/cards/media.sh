@@ -1,7 +1,7 @@
 # Now playing. One nowplaying-cli call (~115ms) for every field, as media.sh
 # documents - asking for keys individually costs the same each time.
 card_rows() {
-  local raw title artist album app rate
+  local raw title artist album rate
   raw="$(nowplaying-cli get title artist album playbackRate 2>/dev/null)"
   { IFS= read -r title; IFS= read -r artist; IFS= read -r album; IFS= read -r rate; } <<RAWEOF
 $raw

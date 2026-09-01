@@ -67,12 +67,16 @@ echo "power.sh:"
 WANT="$(printf '\357\205\271' | xxd -p)"
 GOT="$(sketchybar --query power 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
 is "apple glyph U+F179 bytes" "$GOT" "$WANT"
+# Ask the script which actions it handles rather than grepping its case arms:
+# the old grep pinned the indentation of every arm, so reformatting power.sh
+# failed this suite with zero behaviour change.
+PACT="$("$CONFIG_DIR/plugins/power.sh" --list-actions 2>/dev/null)"
 for a in toggle close about settings appstore force lock sleep logout restart shutdown; do
-  grep -q "^  $a)" "$CONFIG_DIR/plugins/power.sh" && ok "action $a" || bad "action $a missing"
+  printf '%s\n' "$PACT" | grep -qx "$a" && ok "action $a" || bad "action $a missing"
 done
 
 echo "layout vs notch:"
-read -r M_TOP M_NL M_NR M_W <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
+read -r M_TOP M_NL M_NR _ <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
 BAR_H="$(sketchybar --query bar 2>/dev/null | jq -r '.height')"
 is "bar height matches reserved top inset" "$BAR_H" "$M_TOP"
 if [ "${M_NR:-0}" = "0" ]; then
@@ -150,7 +154,7 @@ fi
 echo "meeting.sh / meeting_click.sh:"
 MEET_TMP="$(mktemp -d)"   # removed at the end of this block; no trap, so
                           # merging this into check.sh cannot clobber one.
-command -v "$HOME/bin/gws-now" >/dev/null && ok "gws-now on disk" || bad "~/bin/gws-now missing (the meeting item needs it)"
+command -v "$HOME/bin/gws-now" >/dev/null && ok "gws-now on disk" || bad "gws-now missing from ~/bin (the meeting item needs it)"
 
 # Link resolution is pure: fixtures in, URL out, no network. These are the three
 # shapes that actually occur - Meet/Zoom via conferenceData, Zoom only as a
@@ -223,6 +227,11 @@ NAME=meeting MEETING_CACHE="$MEET_TMP/cache.json" MEETING_FIXTURE="$MEET_TMP/fai
   "$CONFIG_DIR/plugins/meeting.sh" 2>/dev/null
 is "failed fetch -> hidden"     "$(sketchybar --query meeting 2>/dev/null | jq -r '.geometry.drawing')" "off"
 is "failed fetch -> no dangling rule" "$(sketchybar --query sep.timing 2>/dev/null | jq -r '.geometry.drawing')" "off"
+
+# The fixture above left the LIVE item hidden. One real run, no overrides, puts
+# the bar back where it was - otherwise a check during an actual meeting blanks
+# it until the next 60s tick, and running this suite twice is not idempotent.
+NAME=meeting "$CONFIG_DIR/plugins/meeting.sh" >/dev/null 2>&1 || true
 rm -rf "$MEET_TMP"
 
 echo "caffeine:"
@@ -273,6 +282,7 @@ echo "hover cards:"
 for c in $CARD_ITEMS; do
   [ -r "$CONFIG_DIR/cards/$c.sh" ] || { bad "cards/$c.sh missing"; continue; }
   # Every provider must define card_rows and emit well-formed <glyph>TAB<color>TAB<text>.
+  # shellcheck source=/dev/null
   CROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"
             type card_rows >/dev/null 2>&1 && card_rows 2>/dev/null )"
   if [ -z "$CROWS" ]; then bad "$c: card_rows produced nothing"; continue; fi
@@ -290,6 +300,7 @@ done
 # Enough pre-created rows for the longest card, or content is silently dropped.
 for c in $CARD_ITEMS; do
   CN="$(sketchybar --query bar 2>/dev/null | jq -r --arg p "$c.pop." '[.items[]|select(startswith($p))]|length')"
+  # shellcheck source=/dev/null
   CW="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"; card_rows 2>/dev/null | grep -c . )"
   [ "${CN:-0}" -ge "${CW:-0}" ] && ok "$c: $CN rows for $CW needed" \
                                 || bad "$c: only $CN rows for $CW content lines - card truncated"
@@ -387,12 +398,21 @@ CP_OTHER="$(printf '%s\n' "$CPROD" | grep -cv 'brave_tab.sh 3\|productive_start.
   || bad "productive rows disagree: $CPROD"
 
 # Media: exactly one actionable row, and it is the transport control at the end.
+# With no session at all (fresh boot, nothing ever played) the card correctly
+# renders one actionless "Nothing playing" row instead - a second right shape,
+# not a failure, so assert the transport rules only when there IS a session.
 CMED="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/media.sh"; card_rows 2>/dev/null )"
 CACT="$(printf '%s\n' "$CMED" | awk -F'\t' '$4!=""' | wc -l | tr -d ' ')"
 CLAST="$(printf '%s\n' "$CMED" | tail -1 | awk -F'\t' '{print $4}')"
-is "media has one actionable row" "$CACT" "1"
-case "$CLAST" in *togglePlayPause*) ok "play/pause is the last row" ;;
-                 *) bad "last media row is not the transport control (got '$CLAST')" ;; esac
+CMROWS="$(printf '%s\n' "$CMED" | grep -c . | tr -d ' ')"
+CMTEXT="$(printf '%s\n' "$CMED" | awk -F'\t' 'NR==1{print $3}')"
+if [ "$CMROWS" = "1" ] && [ "$CACT" = "0" ] && [ "$CMTEXT" = "Nothing playing" ]; then
+  ok "media: no session"
+else
+  is "media has one actionable row" "$CACT" "1"
+  case "$CLAST" in *togglePlayPause*) ok "play/pause is the last row" ;;
+                   *) bad "last media row is not the transport control (got '$CLAST')" ;; esac
+fi
 
 echo "untrusted text:"
 # Row text is free text from calendars, Productive, nowplaying and SSIDs, and
@@ -460,7 +480,10 @@ FHIDDEN="$(fit_label definitely_not_an_item "$FLONG")"
                           || bad "fit_label passed 300 chars through for an unlaid-out item"
 
 echo "deps:"
-for d in jq nowplaying-cli; do
+# timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its
+# hang watchdog without it, and gws is the calendar itself - a missing one
+# hides the meeting item, which looks exactly like an auth failure.
+for d in jq nowplaying-cli timeout gws; do
   command -v "$d" >/dev/null && ok "$d" || bad "$d missing"
 done
 

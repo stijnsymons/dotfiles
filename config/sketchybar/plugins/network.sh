@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Up/down throughput on the default route interface.
 # netstat gives cumulative byte counters, so we diff against the last sample.
+#
+# pipefail matters here: a netstat that fails mid-pipeline leaves awk with no
+# input, and an empty counter read as a zero sample renders the whole link as
+# idle - or, next tick, as a multi-GB/s spike off the counter jumping back up.
+set -u
+set -o pipefail
 
 source "$CONFIG_DIR/colors.sh"
 

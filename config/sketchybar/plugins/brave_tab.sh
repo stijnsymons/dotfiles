@@ -7,6 +7,7 @@
 # these are long-lived tabs (2 = calendar, 3 = Productive) and a click should
 # land in them, not accumulate duplicates. Falls back to `open` only when Brave
 # is not running or the tab does not exist, so a click is never a no-op.
+set -u
 
 TAB="${1:?brave_tab.sh needs a tab index}"
 URL="${2:-}"

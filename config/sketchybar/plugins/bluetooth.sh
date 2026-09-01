@@ -5,6 +5,7 @@
 # is on (system_profiler says "attrib_on" for the same controller), which showed
 # the item as permanently off. Same class of bug as the networksetup one in
 # wifi.sh. system_profiler is authoritative and costs ~0.2s, fine at update_freq=60.
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 
@@ -20,12 +21,14 @@ BTEOF
 # Icon-only: 󰂱 blue = connected, 󰂯 = on but idle, 󰂲 dim = powered off.
 # "on but idle" is deliberately NOT dimmed - a dim icon reads as "off", which is
 # exactly the confusion this plugin used to cause.
-if [ "$STATE" != "attrib_on" ]; then
+# ${VAR:-}: the reads above never ran if the here-document itself could not be
+# created, and an unset variable must degrade to "off", not kill the repaint.
+if [ "${STATE:-}" != "attrib_on" ]; then
   sketchybar --set "$NAME" icon="󰂲" icon.color="$FG_DIM"
   exit 0
 fi
 
-if [ -n "$DEVICE" ]; then
+if [ -n "${DEVICE:-}" ]; then
   sketchybar --set "$NAME" icon="󰂱" icon.color="$BLUE"
 else
   sketchybar --set "$NAME" icon="󰂯" icon.color="$FG"

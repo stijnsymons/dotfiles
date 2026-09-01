@@ -15,6 +15,7 @@
 # Rows carry their own actions. cards/<item>.sh may add a fourth field, a
 # shell command run when that row is clicked; the engine appends a close so
 # every row dismisses the card. Rows without one just close it.
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/fit.sh"
@@ -61,6 +62,7 @@ for other in $CARD_ITEMS; do
 done
 [ "${#CLOSE_ARGS[@]}" -gt 0 ] && sketchybar "${CLOSE_ARGS[@]}"
 
+# shellcheck source=/dev/null
 source "$CONFIG_DIR/cards/$ITEM.sh"
 N=1
 MAX="${CARD_ROWS:-8}"   # sketchybarrc pre-created exactly this many rows

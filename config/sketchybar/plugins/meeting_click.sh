@@ -25,6 +25,7 @@
 # or prints nothing (exit 1) instead of opening anything. meeting.sh calls it
 # that way so the icon it draws and the action a click takes can never disagree.
 # MEETING_CACHE=<file.json> points both at a fixture.
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 

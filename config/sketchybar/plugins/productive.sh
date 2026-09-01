@@ -11,6 +11,7 @@
 #
 # Glyphs are UTF-8 octal escapes so no encoding step can drop them:
 # U+F017 clock (timing), U+F071 warning triangle (not timing).
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/fit.sh"
@@ -90,7 +91,10 @@ JQEOF
 
   # A running clock keeps running: age the cached figure forward so a served
   # cache never shows a stale number.
-  set_running "${what:-timing} $(fmt $((elapsed + age / 60)))" "$(timer_color "$project" "$task" "$service")"
+  # ${VAR:-}: the reads above never ran if the here-document itself could not be
+  # created, and a missing field must cost the colour, not the whole repaint.
+  set_running "${what:-timing} $(fmt $(( ${elapsed:-0} + age / 60 )))" \
+              "$(timer_color "${project:-}" "${task:-}" "${service:-}")"
 }
 
 if JSON="$(fetch)"; then

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Volume level + mute state. Click toggles mute, scroll changes volume.
+set -u
 
 source "$CONFIG_DIR/colors.sh"
 
 set_volume() { osascript -e "set volume output volume $1"; }
 
-case "$SENDER" in
+case "${SENDER:-}" in
   mouse.clicked)
     osascript -e 'set volume output muted not (output muted of (get volume settings))'
     ;;
@@ -28,8 +29,8 @@ esac
 # volume_change hands the new level in $INFO; anything else we read the system.
 # The mute flag is never in $INFO though, and there is no update_freq to
 # self-correct, so a keyboard mute would stay bright yellow. Ask for it.
-if [ "$SENDER" = "volume_change" ]; then
-  VOLUME="$INFO"
+if [ "${SENDER:-}" = "volume_change" ]; then
+  VOLUME="${INFO:-}"
   MUTED="$(osascript -e 'output muted of (get volume settings)')"
 else
   VOLUME="$(osascript -e 'output volume of (get volume settings)')"

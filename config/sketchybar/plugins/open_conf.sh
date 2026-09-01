@@ -7,6 +7,7 @@
 #   teams https://teams...         ->  msteams://teams...
 # Anything unrecognised falls through to `open`, which is still correct - just
 # slower - so a new provider never means a dead click.
+set -u
 
 # --print resolves the app URI and prints it instead of launching anything, so
 # the translation can be asserted without joining a real call.
