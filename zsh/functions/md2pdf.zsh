@@ -28,7 +28,14 @@ md2pdf() {
   # abort on internal links (e.g. GitHub drops '.' from #...-file.md anchors).
   local lua="$HOME/dotfiles/config/pandoc/fix-internal-links.lua"
   local -a largs; [[ -f $lua ]] && largs=(--lua-filter "$lua")
-  PUPPETEER_EXECUTABLE_PATH=$chrome \
+  # Render diagrams as SVG, not mermaid-filter's default 800px PNG -- that
+  # landed in the PDF at ~120ppi and was unreadable in print. SVG is vector,
+  # so it stays sharp at any zoom and the labels stay selectable.
+  # Needs htmlLabels off (see mermaid-config.json) or typst cannot draw them.
+  local mcfg="$HOME/dotfiles/config/pandoc/mermaid-config.json"
+  local -a menv=(MERMAID_FILTER_FORMAT=svg PUPPETEER_EXECUTABLE_PATH=$chrome)
+  [[ -f $mcfg ]] && menv+=(MERMAID_FILTER_MERMAID_CONFIG=$mcfg)
+  env "${menv[@]}" \
     pandoc "$in" --filter mermaid-filter "${largs[@]}" --pdf-engine=typst "${targs[@]}" -o "$out" && print "→ $out"
   rm -f mermaid-filter.err   # stray log mermaid-filter drops in cwd
 }

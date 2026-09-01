@@ -1,0 +1,6 @@
+{
+  "_comment": "htmlLabels must stay false: mermaid otherwise emits labels inside SVG <foreignObject>, which typst cannot render (typst issue 1421). With it off, labels become real SVG <text> -- so they render, and stay selectable/searchable in the PDF. <br> in labels still works.",
+  "htmlLabels": false,
+  "flowchart": { "htmlLabels": false },
+  "class": { "htmlLabels": false }
+}
