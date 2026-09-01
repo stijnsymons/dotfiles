@@ -124,6 +124,7 @@ alias gd='git diff'
 
 # workmux
 alias wm='workmux'
+alias v='nvim'
 
 #-------------------------------------------------------------------------------
 # Fuzzy finder (https://github.com/junegunn/fzf)
@@ -204,19 +205,29 @@ export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write p
   source ~/dotfiles/motd.sh
   export MOTD_SHOWN=1
 }
+
+
+#-------------------------------------------------------------------------------
+# aikido stuff
+#-------------------------------------------------------------------------------
+[[ $N5_WORK_LAPTOP == 1 ]] && {
+  
 # aikido-endpoint-ruby-cert-config-start
 # Allow Ruby Bundler to trust the SafeChain MITM CA while preserving public roots.
 export BUNDLE_SSL_CA_CERT="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-ruby-combined-ca.pem"
 # aikido-endpoint-ruby-cert-config-end
+  
 # aikido-endpoint-curl-cert-config-v2-start
 # Allow curl and other OpenSSL-linked tools to trust the SafeChain MITM CA while preserving the system roots.
 export SSL_CERT_FILE="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-openssl-combined-ca.pem"
 export CURL_CA_BUNDLE="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-openssl-combined-ca.pem"
 # aikido-endpoint-curl-cert-config-v2-end
+  
 # aikido-endpoint-cert-config-start
 # Allow Node.js tooling to trust the SafeChain MITM CA while preserving public roots.
 export NODE_EXTRA_CA_CERTS="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-node-combined-ca.pem"
 # aikido-endpoint-cert-config-end
+  
 # aikido-endpoint-pip-cert-config-start
 # Allow Python package managers to trust the SafeChain MITM CA while preserving user-provided roots.
 export PIP_CERT="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-pip-combined-ca.pem"
@@ -224,3 +235,4 @@ export REQUESTS_CA_BUNDLE="/Library/Application Support/AikidoSecurity/EndpointP
 export POETRY_CERTIFICATES_PYPI_CERT="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-pip-combined-ca.pem"
 export UV_SYSTEM_CERTS=true
 # aikido-endpoint-pip-cert-config-end
+}
