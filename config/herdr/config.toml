@@ -136,6 +136,19 @@ prefix = "ctrl+s"
 # [worktrees]
 # directory = "~/.herdr/worktrees"
 
+
+# Vertical split straight into neovim's file picker.
+#
+# type = "shell" (not "pane"): a "pane" command opens herdr's own temporary
+# pane with no say over the split direction, and vertical is the point. The
+# script drives `herdr pane split --direction right` + `herdr pane run`, so the
+# new pane also inherits the source pane's cwd and the picker is scoped to the
+# project you were already in.
+[[keys.command]]
+key = "prefix+f"
+type = "shell"
+command = "/Users/stijn/dotfiles/config/herdr/nvim-find.sh"
+
 [ui]
 # Sidebar width (auto-scaled based on workspace names, this sets the default)
 # sidebar_width = 26
