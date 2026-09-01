@@ -4,6 +4,7 @@ set -u
 export CONFIG_DIR="${CONFIG_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/app_icon.sh"
+source "$CONFIG_DIR/plugins/sys_lib.sh"
 fail=0
 ok()   { printf '  ok   %s\n' "$1"; }
 bad()  { printf '  FAIL %s\n' "$1"; fail=1; }
@@ -18,8 +19,11 @@ nonempty "unknown app" "$(app_icon "Totally Fake App")"
 is "distinct glyphs" "$([ "$(app_icon Slack)" != "$(app_icon Ghostty)" ] && echo yes)" yes
 
 echo "system.sh readings:"
-pct "cpu" "$(top -l 2 -n 0 -s 1 | awk '/CPU usage/ {u=$3+$5} END {printf "%.0f", u}')"
-pct "mem" "$(memory_pressure | awk '/free percentage/ {gsub("%","",$NF); printf "%.0f", 100-$NF}')"
+# The helpers themselves, not a hand-copied pipeline: the old copy asserted a
+# `top` sampling loop the plugin had already stopped using, so it kept passing
+# while measuring nothing the bar runs - and cost this suite 1.7s a go.
+pct "cpu" "$(cpu_pct)"
+pct "mem" "$(mem_pct)"
 
 echo "battery.sh parse:"
 pct "battery" "$(pmset -g batt | grep -Eo '[0-9]+%' | head -1 | tr -d '%')"

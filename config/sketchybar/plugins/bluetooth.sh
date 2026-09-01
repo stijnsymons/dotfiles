@@ -9,7 +9,13 @@
 source "$CONFIG_DIR/colors.sh"
 
 BT="$(system_profiler SPBluetoothDataType -json 2>/dev/null)"
-STATE="$(printf '%s' "$BT" | jq -r '.SPBluetoothDataType[0].controller_properties.controller_state // empty')"
+# Both fields out of one jq pass over the same capture - the second spawn was
+# re-parsing a blob this script already had in hand.
+{ IFS= read -r STATE; IFS= read -r DEVICE; } <<BTEOF
+$(printf '%s' "$BT" | jq -r '.SPBluetoothDataType[0]
+    | (.controller_properties.controller_state // ""),
+      ([.device_connected[]? | keys[0]] | first // "")' 2>/dev/null)
+BTEOF
 
 # Icon-only: 󰂱 blue = connected, 󰂯 = on but idle, 󰂲 dim = powered off.
 # "on but idle" is deliberately NOT dimmed - a dim icon reads as "off", which is
@@ -18,8 +24,6 @@ if [ "$STATE" != "attrib_on" ]; then
   sketchybar --set "$NAME" icon="󰂲" icon.color="$FG_DIM"
   exit 0
 fi
-
-DEVICE="$(printf '%s' "$BT" | jq -r '[.SPBluetoothDataType[0].device_connected[]? | keys[0]] | first // empty')"
 
 if [ -n "$DEVICE" ]; then
   sketchybar --set "$NAME" icon="󰂱" icon.color="$BLUE"

@@ -50,17 +50,26 @@ esac
 # --- open --------------------------------------------------------------------
 # Close any other card first: two open popups at once is never wanted, and
 # mouse.exited.global does not always fire between two quick clicks.
+#
+# Set unconditionally, in one call: popup.drawing=off on an already-closed card
+# is a no-op, so asking each of the five siblings whether it was open first
+# bought nothing and cost a query plus a jq apiece on every single click.
+CLOSE_ARGS=()
 for other in $CARD_ITEMS; do
   [ "$other" = "$ITEM" ] && continue
-  [ "$(sketchybar --query "$other" 2>/dev/null | jq -r '.popup.drawing')" = "on" ] \
-    && sketchybar --set "$other" popup.drawing=off
+  CLOSE_ARGS+=(--set "$other" popup.drawing=off)
 done
+[ "${#CLOSE_ARGS[@]}" -gt 0 ] && sketchybar "${CLOSE_ARGS[@]}"
 
 source "$CONFIG_DIR/cards/$ITEM.sh"
 N=1
 MAX="${CARD_ROWS:-8}"   # sketchybarrc pre-created exactly this many rows
 
 TAB_CH=$'\t'
+# Rows are collected and sent as one call, together with the popup.drawing=on
+# that reveals them: a card of eight rows was eight round trips, each ~8ms, on
+# the click path where the delay is felt.
+ROW_ARGS=()
 while IFS=$'\t' read -r GLYPH COLOR TEXT ACTION; do
   [ "$N" -gt "$MAX" ] && break
   [ -z "$TEXT" ] && continue
@@ -74,9 +83,9 @@ while IFS=$'\t' read -r GLYPH COLOR TEXT ACTION; do
   # Every row dismisses the card; a row with an action runs it first.
   CLICK="$CONFIG_DIR/plugins/card.sh $ITEM close"
   [ -n "$ACTION" ] && CLICK="$ACTION; $CLICK"
-  sketchybar --set "$ITEM.pop.$N" drawing=on icon="$GLYPH" icon.color="$COLOR" \
-                                  label="$(ellipsize "$TEXT" "$MAX_CHARS")" \
-                                  click_script="$CLICK"
+  ROW_ARGS+=(--set "$ITEM.pop.$N" drawing=on icon="$GLYPH" icon.color="$COLOR"
+                   label="$(ellipsize "$TEXT" "$MAX_CHARS")"
+                   click_script="$CLICK")
   N=$(( N + 1 ))
 done <<CARDEOF
 $(card_rows)
@@ -84,9 +93,9 @@ CARDEOF
 
 # Hide leftovers, or the card keeps the previous state's rows on screen.
 while [ "$N" -le "$MAX" ]; do
-  sketchybar --set "$ITEM.pop.$N" drawing=off
+  ROW_ARGS+=(--set "$ITEM.pop.$N" drawing=off)
   N=$(( N + 1 ))
 done
 
 date +%s > "$STAMP"
-sketchybar --set "$ITEM" popup.drawing=on
+sketchybar "${ROW_ARGS[@]}" --set "$ITEM" popup.drawing=on

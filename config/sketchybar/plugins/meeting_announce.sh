@@ -51,8 +51,6 @@ while IFS= read -r ev; do
   case "$START" in ''|*[!0-9]*) continue ;; esac
 
   DELTA=$(( START - NOW ))
-  [ "$DELTA" -gt "$WINDOW" ] && continue      # too far out; a later tick gets it
-  [ "$DELTA" -le 0 ] && continue              # already started
 
   TIER="$(meeting_tier "$ev")"
   [ "$TIER" = "none" ] && continue            # focus block: no takeover
@@ -100,4 +98,12 @@ while IFS= read -r ev; do
   # overlay forever, which is the one failure this subsystem exists to prevent.
   # The grep guard higher up still stops a double fire within the same tick.
   printf '%s\t%s\n' "$KEY" "$START" >> "$SEEN"
-done <<<"$(jq -c '.[]?' "$UPCOMING" 2>/dev/null)"
+done <<<"$(jq -c --argjson now "$NOW" --argjson window "$WINDOW" '
+  .[]? | (._s | numbers) as $s | select($s > $now and $s - $now <= $window)
+' "$UPCOMING" 2>/dev/null)"
+# The window filter lives in that one jq pass rather than in the loop. It used
+# to run per event, after four or five subprocesses had already been spawned to
+# decide the event was hours away - ~50 processes a minute, all of them to
+# conclude there was nothing to do. Everything below the read now runs only for
+# the zero or one events actually being announced. `numbers` drops a non-numeric
+# _s instead of letting the arithmetic abort the whole pass.

@@ -71,24 +71,41 @@ card_rows() {
 # needs first and upcoming fills whatever is left, so a meeting with a long
 # description simply shows fewer of them rather than pushing detail off.
 meeting_upcoming_rows() {
-  local up ev tz start tier color
+  local up ev tz start summary tier color
   up="${MEETING_UPCOMING:-$SB_CACHE_DIR/meetings.json}"
   [ -s "$up" ] || return 0
 
   # No row budgeting here: card.sh stops at CARD_ROWS on its own, so detail
   # rows are emitted first and take what they need, and these fill the rest.
-  while IFS= read -r ev; do
+  #
+  # One jq pass for the whole list: the three per-event spawns that pulled
+  # timeZone, _s and summary are now three fields of the line the loop already
+  # reads. The event object rides along as field 1 because meeting_tier and
+  # meeting_event_link need the whole thing.
+  #
+  # Fields are separated by US (0x1f), not by a tab, and joined rather than
+  # @tsv'd. Both matter:
+  #   - a tab is an IFS *whitespace* character, so `read` collapses a run of
+  #     them and drops leading ones. timeZone is empty on most one-off invites,
+  #     and that empty field would pull summary into tz - every upcoming row
+  #     rendering with the wrong time and no title, silently.
+  #   - @tsv escapes a backslash to \\, which corrupts the embedded JSON of any
+  #     event whose text contains one.
+  # Neither can occur in the payload: jq escapes control characters inside JSON
+  # strings, and the summary has its whitespace runs collapsed anyway.
+  local sep=$'\037'
+  while IFS="$sep" read -r ev start tz summary; do
     [ -z "$ev" ] && continue
+    [ -n "$start" ] || continue
     tier="$(meeting_tier "$ev")"
     color="$(meeting_tier_color "$tier")"
-    tz="$(jq -r '.start.timeZone // empty' <<<"$ev")"
-    start="$(jq -r '._s // empty' <<<"$ev")"
-    [ -n "$start" ] || continue
     printf '󰃰\t%s\t%s  ·  %s\t%s\n' "$color" \
       "$(meeting_hhmm "$start" "$tz")" \
-      "$(card_text "$(jq -r '(.summary // "(no title)") | gsub("\\s+"; " ")' <<<"$ev")")" \
+      "$(card_text "$summary")" \
       "$(meeting_event_link "$ev")"
-  done <<<"$(jq -c '.[]?' "$up" 2>/dev/null)"
+  done <<<"$(jq -r --arg sep "$sep" '.[]? | [tojson, (._s // ""), (.start.timeZone // ""),
+               ((.summary // "(no title)") | gsub("\\s+"; " "))] | join($sep)' \
+             "$up" 2>/dev/null)"
 }
 
 # Same eid trick as the current meeting: htmlLink redirects to the week view,

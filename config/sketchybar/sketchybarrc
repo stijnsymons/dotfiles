@@ -145,21 +145,26 @@ card_popup=(
   popup.y_offset=-4
 )
 
+# One sketchybar call per card, not one per row. Every invocation is a ~8ms
+# round trip to the running bar, and cold start was issuing ~90 of them before
+# the first paint; batching the loops here is most of that back.
 card_rows_for() { # card_rows_for <item>
   local i=1
+  local args=()
   while [ "$i" -le "$CARD_ROWS" ]; do
-    sketchybar --add item "$1.pop.$i" "popup.$1" \
-               --set "$1.pop.$i" drawing=off \
-                                 label.align=left \
-                                 label.font="$FONT_TEXT:Regular:12.0" \
-                                 icon.padding_left=12 \
-                                 icon.padding_right=10 \
-                                 label.padding_left=0 \
-                                 label.padding_right=14 \
-                                 background.drawing=off \
-                                 click_script="$PLUGIN_DIR/card.sh $1 close"
+    args+=(--add item "$1.pop.$i" "popup.$1"
+           --set "$1.pop.$i" drawing=off
+                             label.align=left
+                             label.font="$FONT_TEXT:Regular:12.0"
+                             icon.padding_left=12
+                             icon.padding_right=10
+                             label.padding_left=0
+                             label.padding_right=14
+                             background.drawing=off
+                             click_script="$PLUGIN_DIR/card.sh $1 close")
     i=$(( i + 1 ))
   done
+  sketchybar "${args[@]}"
 }
 
 ##### Left: power menu | focused app #####
@@ -195,10 +200,14 @@ power_row=(
   background.drawing=off
 )
 
+# Rows accumulate and go out in a single call after the last one, same reason
+# as card_rows_for above. Popup order is the order items are added, so the
+# divider is appended into the same array in its place rather than sent early.
+power_args=()
 row() { # row() <name> <glyph> <color> <label> <action>
-  sketchybar --add item "power.$1" popup.power \
-             --set "power.$1" "${power_row[@]}" icon="$2" icon.color="$3" label="$4" \
-                              click_script="$PLUGIN_DIR/power.sh $5"
+  power_args+=(--add item "power.$1" popup.power
+               --set "power.$1" "${power_row[@]}" icon="$2" icon.color="$3" label="$4"
+                                click_script="$PLUGIN_DIR/power.sh $5")
 }
 
 row about    "󰋽" "$BLUE"   "About This Mac"  about
@@ -207,20 +216,22 @@ row appstore "󰟉" "$VIOLET" "App Store"       appstore
 row force    "󰅚" "$PINK"   "Force Quit"      force
 
 # Divider between the "open something" rows and the destructive ones.
-sketchybar --add item power.div popup.power \
-           --set power.div icon="────────────" \
-                           icon.font="$FONT_TEXT:Regular:10.0" \
-                           icon.color="$SEPARATOR" \
-                           icon.padding_left=12 \
-                           label.drawing=off \
-                           background.drawing=off \
-                           click_script="$PLUGIN_DIR/power.sh close"
+power_args+=(--add item power.div popup.power
+             --set power.div icon="────────────"
+                             icon.font="$FONT_TEXT:Regular:10.0"
+                             icon.color="$SEPARATOR"
+                             icon.padding_left=12
+                             label.drawing=off
+                             background.drawing=off
+                             click_script="$PLUGIN_DIR/power.sh close")
 
 row lock     "󰌾" "$BLUE"   "Lock"      lock
 row sleep    "󰒲" "$VIOLET" "Sleep"     sleep
 row logout   "󰍃" "$YELLOW" "Log Out"   logout
 row restart  "󰜉" "$ORANGE" "Restart"   restart
 row shutdown "󰐥" "$RED"    "Shut Down" shutdown
+
+sketchybar "${power_args[@]}"
 
 sketchybar --add item sep.power left --set sep.power "${separator[@]}"
 
@@ -366,8 +377,12 @@ sketchybar --add item net_up right \
                           update_freq=3 \
                           script="$PLUGIN_DIR/network.sh"
 
+# wifi_change is what actually moves this item, and it fires the moment the
+# association changes. The poll is only a backstop for a missed event, so it
+# runs at 60 rather than 15 - each tick spawned networksetup + ipconfig for an
+# SSID that had not changed.
 sketchybar --add item wifi right \
-           --set wifi update_freq=15 \
+           --set wifi update_freq=60 \
                       label.drawing=off \
                       click_script="$PLUGIN_DIR/card.sh wifi toggle" \
                       script="$PLUGIN_DIR/wifi.sh" \
@@ -423,6 +438,10 @@ sketchybar --subscribe mem mouse.exited.global
 sketchybar --add item sep.system right --set sep.system "${separator[@]}"
 
 # Media (hides itself when nothing is playing)
+#
+# media_change catches a track flip instantly, so the poll only has to pick up
+# elapsed-state drift: 15, not 5. nowplaying-cli costs ~115ms a call, which at
+# 5s was ~2.3% of a core around the clock for a label that mostly did not move.
 sketchybar --add item media right \
            --set media icon.color="$GREEN" \
                        label.color="$FG" \
@@ -430,7 +449,7 @@ sketchybar --add item media right \
                        label.width="$W_MEDIA" \
                        label.align=left \
                        scroll_texts=off \
-                       update_freq=5 \
+                       update_freq=15 \
                        script="$PLUGIN_DIR/media.sh" \
                        click_script="$PLUGIN_DIR/card.sh media toggle" \
            --subscribe media media_change
