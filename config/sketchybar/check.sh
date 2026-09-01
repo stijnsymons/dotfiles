@@ -360,6 +360,37 @@ is "media has one actionable row" "$CACT" "1"
 case "$CLAST" in *togglePlayPause*) ok "play/pause is the last row" ;;
                  *) bad "last media row is not the transport control (got '$CLAST')" ;; esac
 
+echo "untrusted text:"
+# Row text is free text from calendars, Productive, nowplaying and SSIDs, and
+# the row separator is a tab - so a tab inside one shifts everything after it
+# into the action field, which card.sh hands to sh.
+is "card_text strips tabs"     "$(card_text "$(printf 'a\tb')")" "ab"
+is "card_text strips newlines" "$(card_text "$(printf 'a\nb')")" "ab"
+# The cache holds event bodies, join links with their passcodes and timesheets.
+is "cache dir is ours alone" "$(stat -f %Lp "$SB_CACHE_DIR" 2>/dev/null)" "700"
+
+# A calendar invite is the one input a stranger writes: anyone who can invite
+# you fills in these fields. Nothing in a crafted one may reach a row's action.
+UT="$(mktemp -d)"
+cat > "$UT/evil.json" <<'CHKEVIL'
+{"summary":"pwn\tx","location":"HQ-0-05\t; touch /tmp/sb-pwn",
+ "description":"agenda\t`touch /tmp/sb-pwn`",
+ "htmlLink":"https://www.google.com/calendar/event?eid=ab'; touch /tmp/sb-pwn;'cd&ctz=x"}
+CHKEVIL
+CEVIL="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/meeting.sh"
+          MEETING_CACHE="$UT/evil.json" MEETING_UPCOMING="$UT/absent.json" card_rows 2>/dev/null )"
+is "crafted invite keeps every row at four fields" \
+   "$(printf '%s\n' "$CEVIL" | awk -F'\t' '{print NF}' | sort -u | tr -d '\n')" "4"
+is "crafted invite cannot reach a row action" \
+   "$(printf '%s\n' "$CEVIL" | awk -F'\t' '{print $4}' | tr -cd ';`$|&')" ""
+# The eid is spliced inside a quoted URL, so a quote in it closes the command.
+CEID="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/meeting.sh"
+         meeting_event_link "$(cat "$UT/evil.json")" )"
+is "crafted eid loses its quotes" "$(printf '%s' "$CEID" | tr -cd "';")" "''"
+rm -rf "$UT"
+[ -e /tmp/sb-pwn ] && { bad "a fixture actually executed something"; rm -f /tmp/sb-pwn; } \
+                   || ok "no fixture command ran"
+
 echo "label fitting:"
 # The regression this guards: label.width referenced an undefined constant, so
 # it expanded to 0 and both items rendered as a bare icon. The label VALUE was

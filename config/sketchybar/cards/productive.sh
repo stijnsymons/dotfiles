@@ -23,9 +23,9 @@ card_rows() {
   fi
 
   printf '%s\t%s\t%s\t%s\n' "$(printf '\357\201\273')" "$GREEN" \
-         "$(jq -r '.project // "(no project)"' <<<"$j")" "$tab"
+         "$(card_text "$(jq -r '.project // "(no project)"' <<<"$j")")" "$tab"
   printf '󰃰\t%s\t%s\t%s\n' "$AQUA" \
-         "$(jq -r '[.budget,.service]|map(select(.!=null and .!=""))|join("  ·  ")' <<<"$j")" "$tab"
+         "$(card_text "$(jq -r '[.budget,.service]|map(select(.!=null and .!=""))|join("  ·  ")' <<<"$j")")" "$tab"
   printf '󰅐\t%s\t%s elapsed\t%s\n' "$FG" "$(jq -r '.elapsed // "?"' <<<"$j")" "$tab"
 
   started="$(jq -r '.started_at // empty' <<<"$j")"
@@ -35,7 +35,7 @@ card_rows() {
   fi
 
   note="$(jq -r '.note // empty' <<<"$j")"
-  [ -n "$note" ] && printf '󰎞\t%s\t%s\t%s\n' "$FG_DIM" "$note" "$tab"
+  [ -n "$note" ] && printf '󰎞\t%s\t%s\t%s\n' "$FG_DIM" "$(card_text "$note")" "$tab"
 
   productive_plan_rows
 }
@@ -60,12 +60,12 @@ productive_plan_rows() {
     color="$(timer_color "$project" "")"
     # Mark the one already running rather than offering to restart it.
     if [ "$project" = "$running_project" ]; then
-      printf '󰔟\t%s\t%s  ·  timing now\t%s\n' "$(timer_color "$project" "$running_task")" "$project" "$tab"
+      printf '󰔟\t%s\t%s  ·  timing now\t%s\n' "$(timer_color "$project" "$running_task")" "$(card_text "$project")" "$tab"
     else
       # The service is shown, not hidden: it is what the time actually books
       # against, and it is not always the role you are planned as.
-      printf '󰐊\t%s\t%s  ·  %s\t%s\n' "$color" "$project" \
-             "$(jq -r '.service // ""' <<<"$row")" \
+      printf '󰐊\t%s\t%s  ·  %s\t%s\n' "$color" "$(card_text "$project")" \
+             "$(card_text "$(jq -r '.service // ""' <<<"$row")")" \
              "$CONFIG_DIR/plugins/productive_start.sh $sid"
     fi
   done <<<"$(jq -c '.[]?' "$plan" 2>/dev/null)"

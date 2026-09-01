@@ -11,6 +11,13 @@
 TAB="${1:?brave_tab.sh needs a tab index}"
 URL="${2:-}"
 
+# Both go into AppleScript source below, where a quote or a backslash would
+# close out of the string literal and run as script. The index must be a
+# number, and a URL carrying either is dropped rather than escaped: the click
+# then just focuses the tab, which is the same thing passing no URL does.
+case "$TAB" in ''|*[!0-9]*) exit 1 ;; esac
+case "$URL" in *[\"\\]*) URL="" ;; esac
+
 if [ -n "$URL" ]; then
   SET_URL="set URL of tab $TAB of front window to \"$URL\""
 else

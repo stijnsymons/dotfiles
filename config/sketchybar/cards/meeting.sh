@@ -23,10 +23,14 @@ card_rows() {
   # view - verified: the tab title came back "Week of August 31". The eid it
   # carries, on the /r/eventedit/ path, does open the detail pane ("Event
   # details"). Fall back to plain tab focus if the eid cannot be extracted.
-  detail="$(jq -r '.htmlLink // empty' <<<"$ev" | sed -nE 's/.*[?&]eid=([^&]+).*/\1/p')"
+  #
+  # The eid is spliced into a quoted URL inside a click_script, and anyone who
+  # can invite you writes it, so keep it to the base64url alphabet Google
+  # actually uses - a quote in there would close out of the command.
+  detail="$(jq -r '.htmlLink // empty' <<<"$ev" | sed -nE 's/.*[?&]eid=([^&]+).*/\1/p' | tr -cd 'A-Za-z0-9_=-')"
   local cal="$CONFIG_DIR/plugins/brave_tab.sh 2"
   [ -n "$detail" ] && cal="$cal 'https://calendar.google.com/calendar/u/0/r/eventedit/$detail'"
-  printf '󰃭\t%s\t%s\t%s\n' "$BLUE" "$(jq -r '(.summary // "(no title)")|gsub("\\s+";" ")' <<<"$ev")" "$cal"
+  printf '󰃭\t%s\t%s\t%s\n' "$BLUE" "$(card_text "$(jq -r '(.summary // "(no title)")|gsub("\\s+";" ")' <<<"$ev")")" "$cal"
   tz="$(jq -r '.start.timeZone // "UTC"' <<<"$ev")"
   read -r s e <<<"$(jq -r '[(.start.dateTime|fromdateiso8601),(.end.dateTime|fromdateiso8601)]|@tsv' <<<"$ev" 2>/dev/null)"
   if [ -n "${s:-}" ] && [ -n "${e:-}" ]; then
@@ -40,15 +44,15 @@ card_rows() {
   if [ -n "$link" ]; then
     printf '󰍹\t%s\tJoin  ·  %s\t%s\n' "$AQUA" "$(sed -E 's|^https?://||' <<<"$link")" \
            "$CONFIG_DIR/plugins/open_conf.sh"
-  elif [ -n "$loc" ]; then printf '󰍎\t%s\t%s\t%s\n' "$AQUA" "$loc" "$cal"; fi
+  elif [ -n "$loc" ]; then printf '󰍎\t%s\t%s\t%s\n' "$AQUA" "$(card_text "$loc")" "$cal"; fi
   att="$(jq -r '(.attendees // []) as $a | if ($a|length)==0 then empty else
         (($a|length|tostring) + " attendee" + (if ($a|length)==1 then "" else "s" end)
          + ([$a[]|select(.responseStatus=="accepted")]|length|if .>0 then "  ·  \(.) accepted" else "" end)) end' <<<"$ev")"
-  [ -n "$att" ] && printf '󰀄\t%s\t%s\t%s\n' "$VIOLET" "$att" "$cal"
+  [ -n "$att" ] && printf '󰀄\t%s\t%s\t%s\n' "$VIOLET" "$(card_text "$att")" "$cal"
   desc="$(jq -r '.description // empty' <<<"$ev" \
           | sed -E 's/<br[^>]*>/ /gI; s/<[^>]+>//g' | tr '\n' ' ' \
           | sed -E 's/&nbsp;/ /g; s/&amp;/\&/g; s/  +/ /g; s/^ +//; s/ +$//')"
-  [ -n "$desc" ] && printf '󰎞\t%s\t%s\t%s\n' "$FG_DIM" "$desc" "$cal"
+  [ -n "$desc" ] && printf '󰎞\t%s\t%s\t%s\n' "$FG_DIM" "$(card_text "$desc")" "$cal"
 
   meeting_upcoming_rows
 }
@@ -76,16 +80,17 @@ meeting_upcoming_rows() {
     [ -n "$start" ] || continue
     printf '󰃰\t%s\t%s  ·  %s\t%s\n' "$color" \
       "$(TZ="$tz" date -r "$start" +%H:%M)" \
-      "$(jq -r '(.summary // "(no title)") | gsub("\\s+"; " ")' <<<"$ev")" \
+      "$(card_text "$(jq -r '(.summary // "(no title)") | gsub("\\s+"; " ")' <<<"$ev")")" \
       "$(meeting_event_link "$ev")"
   done <<<"$(jq -c '.[]?' "$up" 2>/dev/null)"
 }
 
 # Same eid trick as the current meeting: htmlLink redirects to the week view,
-# the eid on /r/eventedit/ opens the detail pane.
+# the eid on /r/eventedit/ opens the detail pane. Same whitelist too - this eid
+# ends up inside the same quoted URL in a click_script.
 meeting_event_link() {
   local eid
-  eid="$(jq -r '.htmlLink // empty' <<<"$1" | sed -nE 's/.*[?&]eid=([^&]+).*/\1/p')"
+  eid="$(jq -r '.htmlLink // empty' <<<"$1" | sed -nE 's/.*[?&]eid=([^&]+).*/\1/p' | tr -cd 'A-Za-z0-9_=-')"
   if [ -n "$eid" ]; then
     printf "%s 2 'https://calendar.google.com/calendar/u/0/r/eventedit/%s'" "$CONFIG_DIR/plugins/brave_tab.sh" "$eid"
   else

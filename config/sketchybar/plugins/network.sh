@@ -4,7 +4,9 @@
 
 source "$CONFIG_DIR/colors.sh"
 
-STATE="${TMPDIR:-/tmp}/sketchybar_net_$(id -u)"
+# Ours, not a guessable name in a world-writable /tmp - this file is rewritten
+# every 3s, so a symlink planted at that name is a free arbitrary-file clobber.
+STATE="$SB_CACHE_DIR/net.counters"
 IFACE="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
 [ -z "$IFACE" ] && { sketchybar --set net_down label="0B/s" --set net_up label="0B/s"; exit 0; }
 
@@ -14,16 +16,21 @@ NOW=$(date +%s)
 read -r RX TX <<<"$(netstat -ibn -I "$IFACE" | awk 'NR>1 {print $(NF-4), $(NF-1); exit}')"
 [ -z "$TX" ] && exit 0
 
+# The interface is part of the sample: counters are per-interface, so diffing
+# en0's total against a docked en11's is meaningless - and when the new one has
+# counted more, that meaningless diff renders as a multi-GB/s spike.
 if [ -r "$STATE" ]; then
-  read -r P_TIME P_RX P_TX < "$STATE"
-  ELAPSED=$(( NOW - P_TIME ))
+  read -r P_IFACE P_TIME P_RX P_TX < "$STATE"
+  ELAPSED=$(( NOW - ${P_TIME:-0} ))
 else
   ELAPSED=0
 fi
-printf '%s %s %s\n' "$NOW" "$RX" "$TX" > "$STATE"
+printf '%s %s %s %s\n' "$IFACE" "$NOW" "$RX" "$TX" > "$STATE"
 
-# First run, a clock jump, or a counter reset (interface bounce) -> show zero.
-if [ "$ELAPSED" -le 0 ] || [ "$RX" -lt "${P_RX:-0}" ] || [ "$TX" -lt "${P_TX:-0}" ]; then
+# First run, a clock jump, a route change, or a counter reset (interface
+# bounce) -> show zero.
+if [ "$ELAPSED" -le 0 ] || [ "${P_IFACE:-}" != "$IFACE" ] \
+   || [ "$RX" -lt "${P_RX:-0}" ] || [ "$TX" -lt "${P_TX:-0}" ]; then
   D_RATE=0; U_RATE=0
 else
   D_RATE=$(( (RX - P_RX) / ELAPSED ))

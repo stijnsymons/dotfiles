@@ -21,3 +21,15 @@ export YELLOW=0xffe0af68          # yellow
 export ORANGE=0xffff9e64          # orange
 export PINK=0xffbb9af7            # magenta
 export RED=0xfff7768e             # red
+
+# Cache. Everything the bar keeps on disk lands here - calendar bodies, join
+# links with their passcodes, timesheet rows - so it is ours alone rather than
+# the world-readable 755 a plain mkdir leaves behind.
+export SB_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
+[ -d "$SB_CACHE_DIR" ] || mkdir -p "$SB_CACHE_DIR"
+chmod 700 "$SB_CACHE_DIR" 2>/dev/null
+
+# Card rows are tab-separated and their fourth field is run by sh, so a literal
+# tab in free text - a calendar invite, a track title, an SSID - would shift the
+# rest of that text into the action field. Strip the separators at the source.
+card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }

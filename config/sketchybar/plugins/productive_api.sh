@@ -20,20 +20,29 @@ productive_creds() {
 }
 
 # productive_api <method> <path-with-query> [body]
+#
+# The two auth headers go in over stdin, not argv: a process's arguments are
+# readable by every other process on the box, and -m 25 on a 60s tick leaves a
+# wide enough window to just watch `ps` for the token. --fail-with-body turns
+# an HTTP error into a non-2xx exit while keeping the body, which is the only
+# place Productive says WHY (422 service_time_tracking_disabled and friends);
+# callers all test the JSON shape, so an error body still reads as failure.
 productive_api() {
   local method="$1" path="$2" body="${3:-}"
   productive_creds || return 1
   if [ -n "$body" ]; then
-    curl -sS -m 25 -X "$method" \
-      -H "X-Auth-Token: $PRODUCTIVE_API_TOKEN" \
-      -H "X-Organization-Id: $PRODUCTIVE_ORG_ID" \
+    curl -sS -m 25 --fail-with-body --retry 2 --retry-max-time 20 -X "$method" \
       -H "Content-Type: application/vnd.api+json" \
-      -d "$body" "https://api.productive.io/api/v2/$path" 2>/dev/null
+      -d "$body" --config - "https://api.productive.io/api/v2/$path" 2>/dev/null <<CURLRC
+header = "X-Auth-Token: $PRODUCTIVE_API_TOKEN"
+header = "X-Organization-Id: $PRODUCTIVE_ORG_ID"
+CURLRC
   else
-    curl -sS -m 25 -X "$method" \
-      -H "X-Auth-Token: $PRODUCTIVE_API_TOKEN" \
-      -H "X-Organization-Id: $PRODUCTIVE_ORG_ID" \
+    curl -sS -m 25 --fail-with-body --retry 2 --retry-max-time 20 -X "$method" \
       -H "Content-Type: application/vnd.api+json" \
-      "https://api.productive.io/api/v2/$path" 2>/dev/null
+      --config - "https://api.productive.io/api/v2/$path" 2>/dev/null <<CURLRC
+header = "X-Auth-Token: $PRODUCTIVE_API_TOKEN"
+header = "X-Organization-Id: $PRODUCTIVE_ORG_ID"
+CURLRC
   fi
 }

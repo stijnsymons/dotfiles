@@ -9,9 +9,11 @@ RAWEOF
   if [ -z "$title" ] || [ "$title" = "null" ]; then
     printf '󰝛\t%s\tNothing playing\n' "$FG_DIM"; return
   fi
-  printf '󰎈\t%s\t%s\n' "$GREEN" "$title"
-  [ -n "$artist" ] && [ "$artist" != "null" ] && printf '󰠃\t%s\t%s\n' "$FG"     "$artist"
-  [ -n "$album"  ] && [ "$album"  != "null" ] && printf '󰀥\t%s\t%s\n' "$FG_DIM" "$album"
+  # These three rows carry no action, so a tab in a track title would make the
+  # rest of it the row's whole command. card_text takes the tabs out first.
+  printf '󰎈\t%s\t%s\n' "$GREEN" "$(card_text "$title")"
+  [ -n "$artist" ] && [ "$artist" != "null" ] && printf '󰠃\t%s\t%s\n' "$FG"     "$(card_text "$artist")"
+  [ -n "$album"  ] && [ "$album"  != "null" ] && printf '󰀥\t%s\t%s\n' "$FG_DIM" "$(card_text "$album")"
   # Transport control, last row: the card's one actionable line. Everything
   # above it is information, so a stray click cannot change playback.
   if [ "$rate" = "1" ]; then

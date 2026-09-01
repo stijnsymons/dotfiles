@@ -6,7 +6,7 @@ card_rows() {
   iface="${iface:-en0}"
   ssid="$(ipconfig getsummary "$iface" 2>/dev/null | awk -F' SSID : ' '/ SSID : / {print $2; exit}')"
   if [ -z "$ssid" ]; then printf '󰖪\t%s\tNot connected\n' "$FG_DIM"; return; fi
-  printf '󰖩\t%s\t%s\n' "$BLUE" "$ssid"
+  printf '󰖩\t%s\t%s\n' "$BLUE" "$(card_text "$ssid")"
   ip="$(ipconfig getifaddr "$iface" 2>/dev/null)"
   [ -n "$ip" ] && printf '󰩟\t%s\t%s  ·  %s\n' "$FG" "$ip" "$iface"
   router="$(route -n get default 2>/dev/null | awk '/gateway:/{print $2}')"

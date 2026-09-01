@@ -67,9 +67,17 @@ source "$CONFIG_DIR/cards/$ITEM.sh"
 N=1
 MAX="$(row_count)"; case "$MAX" in ''|*[!0-9]*) MAX=5 ;; esac
 
+TAB_CH=$'\t'
 while IFS=$'\t' read -r GLYPH COLOR TEXT ACTION; do
   [ "$N" -gt "$MAX" ] && break
   [ -z "$TEXT" ] && continue
+  # Belt and braces behind card_text: an action is handed to sh, so anything
+  # that could chain a second command onto it has no business in one. Every
+  # real action is a path, an index and maybe a quoted URL. Quotes stay legal -
+  # the calendar and Wi-Fi rows need them - which is why the one value that
+  # lands inside them, the calendar eid, is whitelisted where it is extracted.
+  # A cleared action costs the row its click, never its text.
+  case "$ACTION" in *[\;\|\&\$\`\\\<\>\(\)]*|*"$TAB_CH"*) ACTION="" ;; esac
   # Every row dismisses the card; a row with an action runs it first.
   CLICK="$CONFIG_DIR/plugins/card.sh $ITEM close"
   [ -n "$ACTION" ] && CLICK="$ACTION; $CLICK"
