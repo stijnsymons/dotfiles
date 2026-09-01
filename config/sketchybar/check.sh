@@ -244,6 +244,45 @@ PICO="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.color')"
 case "$PICO" in "$RED"|"$GREEN"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
                 *) bad "icon colour not from palette (got '$PICO')" ;; esac
 
+echo "meeting hover card:"
+[ -x "$CONFIG_DIR/plugins/meeting_popup.sh" ] && ok "popup script executable" || bad "meeting_popup.sh not executable"
+POP_TMP="$(mktemp -d)"
+POP_STAMP="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar/meeting-popup.at"
+cat > "$POP_TMP/ev.json" <<'POPEOF'
+{"summary":"Card fixture","start":{"dateTime":"2026-01-01T09:00:00Z","timeZone":"UTC"},
+ "end":{"dateTime":"2026-01-01T10:00:00Z"},"location":"Room 1",
+ "attendees":[{"responseStatus":"accepted"},{"responseStatus":"declined"}],
+ "description":"<p>Agenda &amp; notes</p>"}
+POPEOF
+MEETING_CACHE="$POP_TMP/ev.json" "$CONFIG_DIR/plugins/meeting_popup.sh" open >/dev/null 2>&1
+is "opens on hover" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "on"
+is "row 1 is the title" "$(sketchybar --query meeting.pop.1 2>/dev/null | jq -r '.label.value')" "Card fixture"
+# HTML entities and tags must not reach the card.
+POP_D="$(for i in 1 2 3 4 5; do sketchybar --query "meeting.pop.$i" 2>/dev/null | jq -r 'select(.geometry.drawing=="on")|.label.value'; done | tr '\n' '|')"
+case "$POP_D" in *"<p>"*|*"&amp;"*) bad "raw HTML leaked into the card: $POP_D" ;; *) ok "description stripped of HTML" ;; esac
+case "$POP_D" in *"Agenda & notes"*) ok "entities decoded" ;; *) bad "entities not decoded: $POP_D" ;; esac
+is "full event fills all 5 rows" "$(sketchybar --query meeting.pop.5 2>/dev/null | jq -r '.geometry.drawing')" "on"
+# A sparser event must hide the rows it does not need, or the card keeps the
+# previous meeting's attendees and agenda on screen.
+cat > "$POP_TMP/bare.json" <<'POPEOF'
+{"summary":"Bare","start":{"dateTime":"2026-01-01T09:00:00Z","timeZone":"UTC"},"end":{"dateTime":"2026-01-01T10:00:00Z"}}
+POPEOF
+MEETING_CACHE="$POP_TMP/bare.json" "$CONFIG_DIR/plugins/meeting_popup.sh" open >/dev/null 2>&1
+is "bare event: row 2 shown"  "$(sketchybar --query meeting.pop.2 2>/dev/null | jq -r '.geometry.drawing')" "on"
+is "bare event: row 3 hidden" "$(sketchybar --query meeting.pop.3 2>/dev/null | jq -r '.geometry.drawing')" "off"
+is "bare event: row 5 hidden" "$(sketchybar --query meeting.pop.5 2>/dev/null | jq -r '.geometry.drawing')" "off"
+
+# Watchdog: dismissal depends on mouse.exited.global, which is not guaranteed.
+printf '%s' "$(( $(date +%s) - 600 ))" > "$POP_STAMP"
+"$CONFIG_DIR/plugins/meeting_popup.sh" tick >/dev/null 2>&1
+is "watchdog closes a stale card" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "off"
+MEETING_CACHE="$POP_TMP/ev.json" "$CONFIG_DIR/plugins/meeting_popup.sh" open >/dev/null 2>&1
+"$CONFIG_DIR/plugins/meeting_popup.sh" tick >/dev/null 2>&1
+is "watchdog leaves a fresh card open" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "on"
+"$CONFIG_DIR/plugins/meeting_popup.sh" close >/dev/null 2>&1
+is "closes on exit" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "off"
+rm -rf "$POP_TMP"
+
 echo "label fitting:"
 # The regression this guards: label.width referenced an undefined constant, so
 # it expanded to 0 and both items rendered as a bare icon. The label VALUE was

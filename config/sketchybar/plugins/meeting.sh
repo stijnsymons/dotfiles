@@ -23,6 +23,15 @@
 # check.sh and for offline development.
 
 source "$CONFIG_DIR/colors.sh"
+
+# Hover dispatch, before anything expensive: sketchybar invokes this same
+# script for every subscribed event, and the card must open instantly rather
+# than wait on a Calendar round-trip.
+case "${SENDER:-}" in
+  mouse.entered)                     exec "$CONFIG_DIR/plugins/meeting_popup.sh" open ;;
+  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/meeting_popup.sh" close ;;
+esac
+
 source "$CONFIG_DIR/plugins/fit.sh"
 
 # Keep exactly what the Productive item next door currently needs, plus the
@@ -59,6 +68,9 @@ idle() {
                            label="$(fit_label "$ITEM" "no meetings" "$FIT_RESERVE")"
   exit 0
 }
+
+# Routine update: also police a card left open by a missed mouse.exited.
+"$CONFIG_DIR/plugins/meeting_popup.sh" tick 2>/dev/null
 
 # --- fetch ------------------------------------------------------------------
 STALE=0

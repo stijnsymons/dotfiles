@@ -23,6 +23,8 @@
 FIT_CHAR_W=78        # 7.80pt per character at FiraMono Regular 13.0
 FIT_ITEM_OVERHEAD=30 # icon glyph + its padding (24) + label padding (6)
 FIT_SAFETY=12        # never crowd the notch edge exactly
+FIT_MIN_CHARS=8      # floor: an item degrades to a stub, it never blanks
+FIT_MAX_RESERVE=45   # % of the span a neighbour may claim from us
 
 # fit_label <item> <text> [reserve_px]
 # Echoes text, truncated with a single-character ellipsis if it cannot fit.
@@ -49,7 +51,7 @@ fit_label() {
   # only if there has never been one, assume the worst half of the bar.
   local xcache="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar/fit-${item}.x"
   case "${x:-}" in
-    ''|*[!0-9]*)
+    ''|*[!0-9]*)   # empty, or the -9999 a hidden item reports
       x="$(cat "$xcache" 2>/dev/null)"
       case "${x:-}" in ''|*[!0-9]*) x=$(( notch_l / 2 )) ;; esac
       ;;
@@ -66,10 +68,19 @@ fit_label() {
     *%) reserve=$(( (notch_l - x - FIT_SAFETY) * ${reserve%\%} / 100 )) ;;
   esac
 
+  # Cap what a neighbour may claim. Without this a long Productive timer label
+  # reserves the entire span and this item renders an EMPTY label - visually
+  # identical to the width-0 bug this whole mechanism replaced.
+  local span=$(( notch_l - x - FIT_SAFETY ))
+  local cap=$(( span * FIT_MAX_RESERVE / 100 ))
+  [ "$reserve" -gt "$cap" ] && reserve=$cap
+
   avail=$(( notch_l - x - reserve - FIT_ITEM_OVERHEAD - FIT_SAFETY ))
   chars=$(( avail * 10 / FIT_CHAR_W ))
 
-  if [ "$chars" -lt 3 ]; then printf ''; return; fi
+  # Degrade to a stub rather than vanish: a bare icon looks like a bug, a
+  # truncated word looks like a small screen.
+  [ "$chars" -lt "$FIT_MIN_CHARS" ] && chars=$FIT_MIN_CHARS
   if [ "${#text}" -le "$chars" ]; then printf '%s' "$text"; return; fi
 
   printf '%s…' "${text:0:$(( chars - 1 ))}"
@@ -88,5 +99,15 @@ fit_reserve_for() {
          else 0 end | floor')"
   case "$w" in ''|*[!0-9]*) w=110 ;; esac
   printf '%s' "$(( w + 10 ))"
+}
+
+# ellipsize <text> <max-chars>
+# Plain truncation for popup rows, where the notch is irrelevant - the popup
+# sizes itself to its widest row, so the cap is about not growing a card wider
+# than the screen, not about clearing anything.
+ellipsize() {
+  local text="$1" max="${2:-60}"
+  if [ "${#text}" -le "$max" ]; then printf '%s' "$text"; return; fi
+  printf '%s…' "${text:0:$(( max - 1 ))}"
 }
 
