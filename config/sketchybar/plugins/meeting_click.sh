@@ -2,9 +2,9 @@
 # Click handler for the meeting item. Join the call, or fall back to the
 # pinned calendar tab in Brave.
 #
-# Reads ONLY the cache meeting.sh already wrote (~/.cache/sketchybar/meeting.json),
-# so a click costs no API round-trip and feels instant. No colours are needed,
-# so colors.sh is not sourced (same as power.sh).
+# Reads ONLY the cache meeting.sh already wrote ($SB_CACHE_DIR/meeting.json),
+# so a click costs no API round-trip and feels instant. colors.sh is sourced
+# for that path and for the launchd PATH repair, not for any colour.
 #
 # Link resolution, in order:
 #   1. .hangoutLink                                  (Google Meet)
@@ -26,11 +26,11 @@
 # that way so the icon it draws and the action a click takes can never disagree.
 # MEETING_CACHE=<file.json> points both at a fixture.
 
-CACHE="${MEETING_CACHE:-$HOME/.cache/sketchybar/meeting.json}"
+source "$CONFIG_DIR/colors.sh"
+
+CACHE="${MEETING_CACHE:-$SB_CACHE_DIR/meeting.json}"
 DRY=0
 [ "${1:-}" = "--print" ] && DRY=1
-
-PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"   # jq, under launchd's PATH
 
 EVENT="$(cat "$CACHE" 2>/dev/null)"
 [ -z "$EVENT" ] && EVENT=null

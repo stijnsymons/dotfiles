@@ -25,20 +25,13 @@ ACTION="${2:-open}"
 MAX_OPEN=45        # watchdog: force-close a card left open this long
 MAX_CHARS=64
 
-STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
-STAMP="$STATE_DIR/card-$ITEM.at"
-mkdir -p "$STATE_DIR"
+STAMP="$SB_CACHE_DIR/card-$ITEM.at"
 
 # Invalidate any pending open, then hide. Cheap and unconditional.
 card_close() {
   rm -f "$STAMP"
   sketchybar --set "$ITEM" popup.drawing=off
   exit 0
-}
-
-row_count() {
-  sketchybar --query bar 2>/dev/null \
-    | jq -r --arg p "$ITEM.pop." '[.items[]|select(startswith($p))]|length'
 }
 
 case "$ACTION" in
@@ -57,7 +50,7 @@ esac
 # --- open --------------------------------------------------------------------
 # Close any other card first: two open popups at once is never wanted, and
 # mouse.exited.global does not always fire between two quick clicks.
-for other in meeting productive media cpu wifi caffeine; do
+for other in $CARD_ITEMS; do
   [ "$other" = "$ITEM" ] && continue
   [ "$(sketchybar --query "$other" 2>/dev/null | jq -r '.popup.drawing')" = "on" ] \
     && sketchybar --set "$other" popup.drawing=off
@@ -65,7 +58,7 @@ done
 
 source "$CONFIG_DIR/cards/$ITEM.sh"
 N=1
-MAX="$(row_count)"; case "$MAX" in ''|*[!0-9]*) MAX=5 ;; esac
+MAX="${CARD_ROWS:-8}"   # sketchybarrc pre-created exactly this many rows
 
 TAB_CH=$'\t'
 while IFS=$'\t' read -r GLYPH COLOR TEXT ACTION; do

@@ -14,7 +14,7 @@
 # grow and shrink as the front_app name changes and as each other's content
 # changes.
 #
-# Sourced, not executed. CONFIG_DIR must be set.
+# Sourced, not executed. CONFIG_DIR must be set and colors.sh sourced first.
 
 # FiraMono is monospace, so one constant covers every string. Tenths of a point
 # to keep the arithmetic integer. Re-measure if FONT_TEXT or SZ change:
@@ -49,14 +49,13 @@ fit_label() {
   # Passing the text through untruncated there would overrun the notch until
   # the next tick, 60s later. Use the last position this item held instead, and
   # only if there has never been one, assume the worst half of the bar.
-  local xcache="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar/fit-${item}.x"
+  local xcache="$SB_CACHE_DIR/fit-${item}.x"
   case "${x:-}" in
     ''|*[!0-9]*)   # empty, or the -9999 a hidden item reports
       x="$(cat "$xcache" 2>/dev/null)"
       case "${x:-}" in ''|*[!0-9]*) x=$(( notch_l / 2 )) ;; esac
       ;;
     *)
-      mkdir -p "$(dirname "$xcache")"
       printf '%s' "$x" > "$xcache"
       ;;
   esac

@@ -44,7 +44,7 @@ for b in screen-metrics mic-active meeting-overlay; do
   [ -x "$CONFIG_DIR/bin/$b" ] && ok "bin/$b built" || bad "bin/$b missing or not executable"
 done
 BERR=""
-for e in "${XDG_CACHE_HOME:-$HOME/.cache}"/sketchybar/build-*.err; do
+for e in "$SB_CACHE_DIR"/build-*.err; do
   [ -s "$e" ] && BERR="$BERR $(basename "$e")"
 done
 [ -z "$BERR" ] && ok "no build errors logged" || bad "build failures logged:$BERR"
@@ -256,9 +256,17 @@ PICO="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.color')"
 case "$PICO" in "$RED"|"$GREEN"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
                 *) bad "icon colour not from palette (got '$PICO')" ;; esac
 
+echo "launchd PATH:"
+# launchd hands sketchybar /usr/bin:/bin and nothing else. colors.sh is the one
+# place that repairs it, so every script that sources it finds jq, gws and the
+# Productive CLI - without it every hover card and the calendar item go blank.
+CJQ="$(env -i HOME="$HOME" CONFIG_DIR="$CONFIG_DIR" PATH=/usr/bin:/bin \
+       /bin/bash -c 'source "$CONFIG_DIR/colors.sh"; command -v jq' 2>/dev/null)"
+nonempty "colors.sh puts jq on a launchd PATH" "$CJQ"
+
 echo "hover cards:"
 [ -x "$CONFIG_DIR/plugins/card.sh" ] && ok "engine executable" || bad "plugins/card.sh not executable"
-for c in meeting productive media cpu wifi caffeine; do
+for c in $CARD_ITEMS; do
   [ -r "$CONFIG_DIR/cards/$c.sh" ] || { bad "cards/$c.sh missing"; continue; }
   # Every provider must define card_rows and emit well-formed <glyph>TAB<color>TAB<text>.
   CROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"
@@ -276,7 +284,7 @@ CHKEOF
 done
 
 # Enough pre-created rows for the longest card, or content is silently dropped.
-for c in meeting productive media cpu wifi caffeine; do
+for c in $CARD_ITEMS; do
   CN="$(sketchybar --query bar 2>/dev/null | jq -r --arg p "$c.pop." '[.items[]|select(startswith($p))]|length')"
   CW="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"; card_rows 2>/dev/null | grep -c . )"
   [ "${CN:-0}" -ge "${CW:-0}" ] && ok "$c: $CN rows for $CW needed" \
@@ -286,7 +294,7 @@ done
 # Open/close and the watchdog, exercised on one card (the engine is shared).
 "$CONFIG_DIR/plugins/card.sh" wifi open >/dev/null 2>&1
 is "opens" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "on"
-CSTAMP="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar/card-wifi.at"
+CSTAMP="$SB_CACHE_DIR/card-wifi.at"
 printf '%s' "$(( $(date +%s) - 600 ))" > "$CSTAMP"
 "$CONFIG_DIR/plugins/card.sh" wifi tick >/dev/null 2>&1
 is "watchdog closes a stale card" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
@@ -318,8 +326,10 @@ echo "card row actions:"
 # Every row must carry a click_script, or a row silently does nothing.
 "$CONFIG_DIR/plugins/card.sh" meeting open >/dev/null 2>&1
 CMISS=0
-for i in 1 2 3 4 5 6 7 8; do
-  CQ="$(sketchybar --query "meeting.pop.$i" 2>/dev/null)"
+CI=1
+while [ "$CI" -le "$CARD_ROWS" ]; do
+  CQ="$(sketchybar --query "meeting.pop.$CI" 2>/dev/null)"
+  CI=$(( CI + 1 ))
   [ "$(printf '%s' "$CQ" | jq -r '.geometry.drawing')" = "on" ] || continue
   [ -n "$(printf '%s' "$CQ" | jq -r '.scripting.click_script // ""')" ] || CMISS=1
 done

@@ -2,13 +2,12 @@
 # One script, two items: cpu + mem. Runs on the cpu item's update_freq.
 
 source "$CONFIG_DIR/colors.sh"
-# Hover dispatch, before anything expensive. sketchybar invokes this same
-# script for every subscribed event; card.sh owns the dwell delay so the card
-# does not fire while the pointer is merely crossing the bar.
-case "${SENDER:-}" in
-  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" cpu close ;;
-esac
-
+# Hover dispatch, before anything expensive: sketchybar invokes this same
+# script for every subscribed event. Leaving the bar closes the card; any other
+# event is a routine tick, which is also what polices a card left open by a
+# missed mouse.exited.
+# mem is stacked on top of cpu and shares its card, so both dispatch to "cpu".
+card_dispatch cpu
 
 # top samples twice so the second reading is a real delta, not since-boot average.
 CPU=$(top -l 2 -n 0 -s 1 | awk '/CPU usage/ {u=$3+$5} END {printf "%.0f", u}')

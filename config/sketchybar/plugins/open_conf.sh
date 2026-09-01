@@ -13,7 +13,7 @@
 DRY=0; [ "${1:-}" = "--print" ] && DRY=1
 launch() { [ "$DRY" = 1 ] && { printf '%s\n' "$1"; exit 0; }; open "$1"; exit 0; }
 
-PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+source "$CONFIG_DIR/colors.sh"   # jq on the PATH, under launchd
 LINK="$("$CONFIG_DIR/plugins/meeting_click.sh" --print 2>/dev/null)"
 [ -z "$LINK" ] && exit 0
 

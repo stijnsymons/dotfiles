@@ -10,7 +10,7 @@
 source "$CONFIG_DIR/plugins/productive_colors.sh"
 
 card_rows() {
-  local cache="${PRODUCTIVE_CACHE:-$HOME/.cache/sketchybar/productive.json}"
+  local cache="${PRODUCTIVE_CACHE:-$SB_CACHE_DIR/productive.json}"
   local tab="$CONFIG_DIR/plugins/brave_tab.sh 3"
   local j started iso when note
   j="$(cat "$cache" 2>/dev/null)"
@@ -51,11 +51,11 @@ card_rows() {
 productive_plan_rows() {
   local plan row project sid color running_project running_task tab
   tab="$CONFIG_DIR/plugins/brave_tab.sh 3"
-  plan="${PRODUCTIVE_PLAN_CACHE:-$HOME/.cache/sketchybar/productive-plan.json}"
+  plan="${PRODUCTIVE_PLAN_CACHE:-$SB_CACHE_DIR/productive-plan.json}"
   [ -s "$plan" ] || return 0
 
-  running_project="$(jq -r '.project // ""' "${PRODUCTIVE_CACHE:-$HOME/.cache/sketchybar/productive.json}" 2>/dev/null)"
-  running_task="$(jq -r '.task // ""' "${PRODUCTIVE_CACHE:-$HOME/.cache/sketchybar/productive.json}" 2>/dev/null)"
+  running_project="$(jq -r '.project // ""' "${PRODUCTIVE_CACHE:-$SB_CACHE_DIR/productive.json}" 2>/dev/null)"
+  running_task="$(jq -r '.task // ""' "${PRODUCTIVE_CACHE:-$SB_CACHE_DIR/productive.json}" 2>/dev/null)"
 
   while IFS= read -r row; do
     [ -z "$row" ] && continue

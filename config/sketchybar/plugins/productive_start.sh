@@ -14,13 +14,12 @@
 # Detached from the click, so failures have nowhere to print: they go to the log.
 
 set -u
+source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/productive_api.sh"
 
-export PATH="$HOME/code/assistant/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
 
-LOG="$HOME/.cache/sketchybar/productive-start.log"
-mkdir -p "$(dirname "$LOG")"
+LOG="$SB_CACHE_DIR/productive-start.log"
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
 
 SERVICE="${1:-}"

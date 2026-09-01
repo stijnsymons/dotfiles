@@ -146,8 +146,8 @@ card_popup=(
 )
 
 card_rows_for() { # card_rows_for <item>
-  local i
-  for i in 1 2 3 4 5 6 7 8; do
+  local i=1
+  while [ "$i" -le "$CARD_ROWS" ]; do
     sketchybar --add item "$1.pop.$i" "popup.$1" \
                --set "$1.pop.$i" drawing=off \
                                  label.align=left \
@@ -158,6 +158,7 @@ card_rows_for() { # card_rows_for <item>
                                  label.padding_right=14 \
                                  background.drawing=off \
                                  click_script="$PLUGIN_DIR/card.sh $1 close"
+    i=$(( i + 1 ))
   done
 }
 
@@ -448,7 +449,7 @@ sketchybar --add item display_watch right \
            --subscribe display_watch display_change
 
 # Card rows are added last: every parent item must exist first.
-for c in meeting productive media cpu wifi caffeine; do card_rows_for "$c"; done
+for c in $CARD_ITEMS; do card_rows_for "$c"; done
 
 ##### First paint #####
 sketchybar --update

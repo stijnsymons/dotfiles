@@ -10,13 +10,11 @@
 # U+F04B play, U+F04C pause. (bash 3.2 printf has no \u.)
 
 source "$CONFIG_DIR/colors.sh"
-# Hover dispatch, before anything expensive. sketchybar invokes this same
-# script for every subscribed event; card.sh owns the dwell delay so the card
-# does not fire while the pointer is merely crossing the bar.
-case "${SENDER:-}" in
-  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" media close ;;
-esac
-
+# Hover dispatch, before anything expensive: sketchybar invokes this same
+# script for every subscribed event. Leaving the bar closes the card; any other
+# event is a routine tick, which is also what polices a card left open by a
+# missed mouse.exited.
+card_dispatch media
 
 PLAY="$(printf '\357\201\213')"
 PAUSE="$(printf '\357\201\214')"

@@ -15,7 +15,7 @@ meeting_hhmm() { if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r 
 # points Brave's pinned calendar tab at this event's htmlLink, so a click lands
 # on the meeting's details rather than just today's grid.
 card_rows() {
-  local cache="${MEETING_CACHE:-$HOME/.cache/sketchybar/meeting.json}"
+  local cache="${MEETING_CACHE:-$SB_CACHE_DIR/meeting.json}"
   local ev tz s e mins link loc att desc detail
   ev="$(cat "$cache" 2>/dev/null)"
   if [ -z "$ev" ] || [ "$ev" = "null" ]; then
@@ -67,15 +67,15 @@ card_rows() {
 # coloured by the same tier the bar item uses, so the card and the item agree,
 # and each opens that event in the pinned calendar tab.
 #
-# The card has 8 rows total (sketchybarrc card_rows_for). Detail takes what it
+# The card has CARD_ROWS rows total (colors.sh). Detail takes what it
 # needs first and upcoming fills whatever is left, so a meeting with a long
 # description simply shows fewer of them rather than pushing detail off.
 meeting_upcoming_rows() {
   local up ev tz start tier color
-  up="${MEETING_UPCOMING:-$HOME/.cache/sketchybar/meetings.json}"
+  up="${MEETING_UPCOMING:-$SB_CACHE_DIR/meetings.json}"
   [ -s "$up" ] || return 0
 
-  # No row budgeting here: card.sh stops at row_count() on its own, so detail
+  # No row budgeting here: card.sh stops at CARD_ROWS on its own, so detail
   # rows are emitted first and take what they need, and these fill the rest.
   while IFS= read -r ev; do
     [ -z "$ev" ] && continue

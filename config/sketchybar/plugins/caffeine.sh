@@ -11,7 +11,7 @@ source "$CONFIG_DIR/colors.sh"
 # Only the instance this item started counts. The user may well have other
 # caffeinate processes around (a long build, `caffeinate -w`, Amphetamine's),
 # and killing or reporting on those would be wrong — so we track one PID.
-CAFFEINE_STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
+CAFFEINE_STATE_DIR="$SB_CACHE_DIR"      # caffeine_click.sh reads this too
 CAFFEINE_STATE_FILE="$CAFFEINE_STATE_DIR/caffeine.pid"
 
 # U+F0176 md-coffee, written as an octal escape. The glyph lives in plane 15
@@ -55,8 +55,6 @@ caffeine_render() {
 }
 
 if [ -z "${CAFFEINE_LIB:-}" ]; then
-  case "${SENDER:-}" in
-    mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" caffeine close ;;
-  esac
+  card_dispatch caffeine
   caffeine_render
 fi

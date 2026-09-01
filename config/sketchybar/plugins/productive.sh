@@ -14,32 +14,23 @@
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/fit.sh"
-# Hover dispatch, before anything expensive. sketchybar invokes this same
-# script for every subscribed event; card.sh owns the dwell delay so the card
-# does not fire while the pointer is merely crossing the bar.
-case "${SENDER:-}" in
-  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" productive close ;;
-esac
+# Hover dispatch, before anything expensive: sketchybar invokes this same
+# script for every subscribed event. Leaving the bar closes the card; any other
+# event is a routine tick, which is also what polices a card left open by a
+# missed mouse.exited.
+card_dispatch productive
 
-
-CACHE_DIR="$HOME/.cache/sketchybar"
-CACHE="$CACHE_DIR/productive.json"
+CACHE="$SB_CACHE_DIR/productive.json"
 STALE_AFTER=420          # seconds; past this the cache is no longer evidence
 
 CLOCK="$(printf '\357\200\227')"
 WARN="$(printf '\357\201\261')"
 
-# launchd starts sketchybar from a login-less context: neither the CLI's
-# directory nor its credentials are in the environment.
-export PATH="$HOME/code/assistant/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-if [ -z "${PRODUCTIVE_API_TOKEN:-}" ] && [ -r "$HOME/dotfiles/zshrc.private" ]; then
-  # Only the PRODUCTIVE_* exports, never the whole (zsh) file. The token stays
-  # in that private file; it is never copied into this repo.
-  eval "$(grep -E '^[[:space:]]*export[[:space:]]+PRODUCTIVE_[A-Z_]+=' \
-          "$HOME/dotfiles/zshrc.private" 2>/dev/null)"
-fi
-
-mkdir -p "$CACHE_DIR"
+# launchd starts sketchybar from a login-less context, so the CLI's credentials
+# are not in the environment either. productive_api.sh owns that lift: one copy
+# of the only code in here that goes near the token.
+source "$CONFIG_DIR/plugins/productive_api.sh"
+productive_creds || true
 
 # Keep this week's planning cache warm for the card. Cheap: it returns
 # immediately unless the cache is older than its TTL, so this is a stat()

@@ -10,7 +10,7 @@
 #
 # This is the only plugin that touches the network, so:
 #   - it is meant to run on update_freq=60, never on a tight cycle;
-#   - the raw event JSON is cached to ~/.cache/sketchybar/meeting.json so
+#   - the raw event JSON is cached to $SB_CACHE_DIR/meeting.json so
 #     meeting_click.sh can resolve the join link with zero extra API calls;
 #   - when the fetch comes back empty AND there is no default route, the cached
 #     event is kept on screen (dimmed) until its own end time passes, so a Wi-Fi
@@ -25,11 +25,10 @@
 source "$CONFIG_DIR/colors.sh"
 
 # Hover dispatch, before anything expensive: sketchybar invokes this same
-# script for every subscribed event, and the card must open instantly rather
-# than wait on a Calendar round-trip.
-case "${SENDER:-}" in
-  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" meeting close ;;
-esac
+# script for every subscribed event, and the card must be dismissed instantly
+# rather than after a Calendar round-trip. The routine tick it makes on every
+# other event polices a card left open by a missed mouse.exited.
+card_dispatch meeting
 
 source "$CONFIG_DIR/plugins/fit.sh"
 source "$CONFIG_DIR/plugins/meeting_lib.sh"
@@ -39,15 +38,10 @@ source "$CONFIG_DIR/plugins/meeting_fetch.sh"
 # divider - no more, so the meeting title gets every remaining pixel.
 FIT_RESERVE="$(fit_reserve_for productive)"
 
-# launchd hands sketchybar a minimal PATH: gws-now lives in ~/bin, gws/jq in
-# the brew prefix. Without this the plugin silently never finds anything.
-PATH="$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-
 ITEM="${NAME:-meeting}"
-CACHE="${MEETING_CACHE:-$HOME/.cache/sketchybar/meeting.json}"
+CACHE="${MEETING_CACHE:-$SB_CACHE_DIR/meeting.json}"
 # The rest of the window, for the card's upcoming list and the announcer.
-UPCOMING="${MEETING_UPCOMING:-$HOME/.cache/sketchybar/meetings.json}"
-mkdir -p "$(dirname "$CACHE")"
+UPCOMING="${MEETING_UPCOMING:-$SB_CACHE_DIR/meetings.json}"
 
 VIDEO="󰕧"   # nf-md-video      - meeting with a join link
 ROOM="󰃭"    # nf-md-calendar   - meeting without one
@@ -74,9 +68,6 @@ idle() {
                            label="$(fit_label "$ITEM" "no meetings" "$FIT_RESERVE")"
   exit 0
 }
-
-# Routine update: also police a card left open by a missed mouse.exited.
-"$CONFIG_DIR/plugins/card.sh" meeting tick 2>/dev/null
 
 # --- fetch ------------------------------------------------------------------
 STALE=0

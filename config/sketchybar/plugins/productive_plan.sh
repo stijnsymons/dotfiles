@@ -12,14 +12,12 @@
 # every minute, and productive.sh already runs on a 60s tick.
 
 set -u
+source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/productive_api.sh"
 
-CACHE="${PRODUCTIVE_PLAN_CACHE:-$HOME/.cache/sketchybar/productive-plan.json}"
+CACHE="${PRODUCTIVE_PLAN_CACHE:-$SB_CACHE_DIR/productive-plan.json}"
 TTL="${PRODUCTIVE_PLAN_TTL:-3600}"
-export PATH="$HOME/code/assistant/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$HOME/.cache/uv}"
-
-mkdir -p "$(dirname "$CACHE")"
 
 # Fresh enough? Nothing to do.
 if [ -s "$CACHE" ] && [ "$(( $(date +%s) - $(stat -f %m "$CACHE") ))" -lt "$TTL" ]; then

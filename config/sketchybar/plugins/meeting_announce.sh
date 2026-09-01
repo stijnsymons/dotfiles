@@ -11,15 +11,15 @@
 #
 # Announcements are deduped by event id + start time in a state file, so the
 # overlapping tick windows cannot fire the same meeting twice. /tmp-style cache
-# under ~/.cache, pruned of past entries each run.
+# under $SB_CACHE_DIR, pruned of past entries each run.
 
 set -u
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/meeting_lib.sh"
 
-UPCOMING="${MEETING_UPCOMING:-$HOME/.cache/sketchybar/meetings.json}"
-SEEN="${MEETING_ANNOUNCED:-$HOME/.cache/sketchybar/announced}"
+UPCOMING="${MEETING_UPCOMING:-$SB_CACHE_DIR/meetings.json}"
+SEEN="${MEETING_ANNOUNCED:-$SB_CACHE_DIR/announced}"
 # Overridable so check.sh can assert which meetings announce without
 # actually taking the screen over.
 OVERLAY="${MEETING_OVERLAY:-$CONFIG_DIR/bin/meeting-overlay}"
@@ -35,7 +35,7 @@ hhmm() { if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r "$1" +%H
 [ -s "$UPCOMING" ] || exit 0
 [ -x "$OVERLAY" ]  || exit 0
 
-mkdir -p "$(dirname "$SEEN")"; touch "$SEEN"
+touch "$SEEN"
 NOW="$(date -u +%s)"
 
 # Drop entries whose meeting has already started, so this cannot grow forever.
@@ -80,12 +80,12 @@ while IFS= read -r ev; do
   # the first scheduled job then deletes it - two meetings a minute apart
   # announced as one. Same reason the link probe gets its own file.
   # BSD mktemp needs the Xs trailing - a ".json" suffix makes it fail outright.
-  PROBE="$(mktemp "$HOME/.cache/sketchybar/announce-probe-XXXXXX")"
+  PROBE="$(mktemp "$SB_CACHE_DIR/announce-probe-XXXXXX")"
   printf '%s\n' "$ev" > "$PROBE"
   LINK="$(MEETING_CACHE="$PROBE" "$CONFIG_DIR/plugins/meeting_click.sh" --print 2>/dev/null)"
   rm -f "$PROBE"
 
-  PAYLOAD="$(mktemp "$HOME/.cache/sketchybar/announce-XXXXXX")"
+  PAYLOAD="$(mktemp "$SB_CACHE_DIR/announce-XXXXXX")"
   jq -c --arg t "$TIER" --arg w "$WHEN" --arg p "$PEOPLE" --arg l "$LINK" \
      '. + {_tier:$t, _when:$w, _people:$p} + (if $l == "" then {} else {_link:$l} end)' \
      <<<"$ev" > "$PAYLOAD" 2>/dev/null || { rm -f "$PAYLOAD"; continue; }
