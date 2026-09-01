@@ -32,6 +32,8 @@ case "${SENDER:-}" in
 esac
 
 source "$CONFIG_DIR/plugins/fit.sh"
+source "$CONFIG_DIR/plugins/meeting_lib.sh"
+source "$CONFIG_DIR/plugins/meeting_fetch.sh"
 
 # Keep exactly what the Productive item next door currently needs, plus the
 # divider - no more, so the meeting title gets every remaining pixel.
@@ -43,6 +45,8 @@ PATH="$HOME/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 ITEM="${NAME:-meeting}"
 CACHE="${MEETING_CACHE:-$HOME/.cache/sketchybar/meeting.json}"
+# The rest of the window, for the card's upcoming list and the announcer.
+UPCOMING="${MEETING_UPCOMING:-$HOME/.cache/sketchybar/meetings.json}"
 mkdir -p "$(dirname "$CACHE")"
 
 VIDEO="󰕧"   # nf-md-video      - meeting with a join link
@@ -76,12 +80,23 @@ STALE=0
 if [ -n "${MEETING_FIXTURE:-}" ]; then
   EVENT="$(cat "$MEETING_FIXTURE" 2>/dev/null)"
 else
-  command -v gws-now >/dev/null || hide
-  # A hung API call would otherwise pin the plugin until the next tick.
-  if command -v timeout >/dev/null; then
-    EVENT="$(timeout 20 gws-now --json 2>/dev/null)"
+  command -v gws >/dev/null || hide
+
+  # One windowed call, then derive both halves from it: the event running right
+  # now, and everything after it. gws-now answers only the first question and
+  # would mean a second request per tick for the list and the announcement.
+  WINDOW="$(meeting_fetch)"
+  if [ -z "$WINDOW" ]; then
+    EVENT=""                                        # call failed: unknown
   else
-    EVENT="$(gws-now --json 2>/dev/null)"
+    NOW_TS="$(date -u +%s)"
+    EVENT="$(jq -c --argjson t "$NOW_TS" 'map(select(._s <= $t and ._e > $t)) | .[0] // "null"' <<<"$WINDOW" 2>/dev/null)"
+    [ "$EVENT" = '"null"' ] && EVENT="null"
+    jq -c --argjson t "$NOW_TS" 'map(select(._s > $t))' <<<"$WINDOW" > "$UPCOMING" 2>/dev/null
+    # Schedule the 1-minute overlay off the freshly written list. Runs on every
+    # tick and dedups internally, so a missed tick just means the next one
+    # picks the meeting up.
+    "$CONFIG_DIR/plugins/meeting_announce.sh" 2>/dev/null || true
   fi
 fi
 
@@ -143,9 +158,15 @@ fi
 
 # label.max_chars (set in sketchybarrc) is what makes this scroll; label.width
 # only clips. See README > Notes / gotchas.
+# Label colour carries WHO is in the meeting, independent of the icon colour
+# which carries how long is left. Rooms are not people - see meeting_lib.sh.
+TIER="$(meeting_tier "$EVENT")"
+LABEL_COLOR="$(meeting_tier_color "$TIER")"
+[ "$STALE" -eq 1 ] && LABEL_COLOR="$FG_DIM"   # offline: do not assert a tier
+
 sketchybar --set sep.timing drawing=on
 sketchybar --set "$ITEM" drawing=on \
                          icon="$ICON" \
                          icon.color="$ICON_COLOR" \
-                         label.color="$FG" \
+                         label.color="$LABEL_COLOR" \
                          label="$(fit_label "$ITEM" "$SUMMARY · $REMAIN" "$FIT_RESERVE")"
