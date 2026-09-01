@@ -20,6 +20,13 @@ CAFFEINE_STATE_FILE="$CAFFEINE_STATE_DIR/caffeine.pid"
 # HackNerdFont-{Regular,Bold}.ttf as glyph `md-coffee`.
 CAFFEINE_ICON="$(printf '\363\260\205\266')"
 
+# The item this plugin paints. Deliberately NOT $NAME: caffeine_click.sh is
+# also wired as the click_script of a card ROW, and sketchybar sets NAME to the
+# row it fired from (caffeine.pop.N). Rendering to $NAME therefore recoloured
+# the row and left the mug stale until the next update_freq tick - up to 30s of
+# "I turned it on and the cup is still grey".
+CAFFEINE_ITEM="caffeine"
+
 # Print the PID of our live caffeinate, or return 1. A PID file alone proves
 # nothing: PIDs are recycled, so the process must be alive AND still be a
 # caffeinate. Anything else is stale and reads as "off".
@@ -38,12 +45,12 @@ caffeine_pid() {
 
 caffeine_render() {
   if caffeine_pid >/dev/null; then
-    sketchybar --set "$NAME" icon="$CAFFEINE_ICON" icon.color="$GREEN"
+    sketchybar --set "$CAFFEINE_ITEM" icon="$CAFFEINE_ICON" icon.color="$GREEN"
   else
     # Stale or bogus state file (killed externally, PID recycled): forget it,
     # so the next click starts fresh instead of trying to kill a stranger.
     rm -f "$CAFFEINE_STATE_FILE"
-    sketchybar --set "$NAME" icon="$CAFFEINE_ICON" icon.color="$FG_DIM"
+    sketchybar --set "$CAFFEINE_ITEM" icon="$CAFFEINE_ICON" icon.color="$FG_DIM"
   fi
 }
 
