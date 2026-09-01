@@ -143,12 +143,12 @@ command -v "$HOME/bin/gws-now" >/dev/null && ok "gws-now on disk" || bad "~/bin/
 # through to Brave.
 cat > "$MEET_TMP/zoom.json" <<'JSON'
 {"summary":"standup","conferenceData":{"entryPoints":[
-  {"entryPointType":"video","uri":"https://novemberfive.zoom.us/j/89531039342?jst=2"},
-  {"entryPointType":"phone","uri":"tel:+3227880172,,89531039342#"}]}}
+  {"entryPointType":"video","uri":"https://example.zoom.us/j/12345678901?jst=2"},
+  {"entryPointType":"phone","uri":"tel:+3200000000,,12345678901#"}]}}
 JSON
 cat > "$MEET_TMP/zoom_notes.json" <<'JSON'
 {"summary":"standup","location":"HQ-0-05 (8) [TV, Zoom]","conferenceData":{"notes":
-"Join Zoom Meeting: <br /><a href=\"https://www.google.com/url?q=https://novemberfive.zoom.us/j/89531039342?jst%3D2&amp;sa=D&amp;source=calendar\">link</a><br />Agenda: <a href=\"https://docs.zoom.us/agenda/doc/abc\">agenda</a>"}}
+"Join Zoom Meeting: <br /><a href=\"https://www.google.com/url?q=https://example.zoom.us/j/12345678901?jst%3D2&amp;sa=D&amp;source=calendar\">link</a><br />Agenda: <a href=\"https://docs.zoom.us/agenda/doc/abc\">agenda</a>"}}
 JSON
 cat > "$MEET_TMP/teams.json" <<'JSON'
 {"summary":"review","location":"Microsoft Teams Meeting","description":
@@ -159,8 +159,8 @@ printf 'null\n' > "$MEET_TMP/none.json"
 : > "$MEET_TMP/failed.json"   # empty = the gws-now call itself failed
 
 mlink() { MEETING_CACHE="$MEET_TMP/$1" "$CONFIG_DIR/plugins/meeting_click.sh" --print 2>/dev/null; }
-is "zoom via conferenceData"  "$(mlink zoom.json)"       "https://novemberfive.zoom.us/j/89531039342?jst=2"
-is "zoom via wrapped notes"   "$(mlink zoom_notes.json)" "https://novemberfive.zoom.us/j/89531039342?jst=2"
+is "zoom via conferenceData"  "$(mlink zoom.json)"       "https://example.zoom.us/j/12345678901?jst=2"
+is "zoom via wrapped notes"   "$(mlink zoom_notes.json)" "https://example.zoom.us/j/12345678901?jst=2"
 case "$(mlink teams.json)" in
   https://teams.microsoft.com/l/meetup-join/*) ok "teams via html description" ;;
   *) bad "teams via html description (got '$(mlink teams.json)')" ;;
