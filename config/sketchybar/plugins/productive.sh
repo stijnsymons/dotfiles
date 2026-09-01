@@ -14,6 +14,14 @@
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/fit.sh"
+# Hover dispatch, before anything expensive. sketchybar invokes this same
+# script for every subscribed event; card.sh owns the dwell delay so the card
+# does not fire while the pointer is merely crossing the bar.
+case "${SENDER:-}" in
+  mouse.entered)                     exec "$CONFIG_DIR/plugins/card.sh" productive open ;;
+  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" productive close ;;
+esac
+
 
 CACHE_DIR="$HOME/.cache/sketchybar"
 CACHE="$CACHE_DIR/productive.json"

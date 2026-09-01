@@ -85,6 +85,39 @@ separator=(
   click_script=""
 )
 
+##### Hover cards #####
+# plugins/card.sh owns the dwell delay, cancellation and the stuck-card
+# watchdog; cards/<item>.sh supplies the rows. Rows are pre-created and hidden
+# because building them on hover flashes an empty card while sketchybar lays
+# them out. Six rows each - the cpu card is the longest at six.
+card_popup=(
+  popup.background.color="$POPUP_BG"
+  popup.background.corner_radius=6
+  popup.background.border_width=1
+  popup.background.border_color="$SEPARATOR"
+  popup.background.shadow.drawing=on
+  popup.horizontal=off
+  popup.height=24
+  popup.align=left
+  popup.y_offset=-4
+)
+
+card_rows_for() { # card_rows_for <item>
+  local i
+  for i in 1 2 3 4 5 6; do
+    sketchybar --add item "$1.pop.$i" "popup.$1" \
+               --set "$1.pop.$i" drawing=off \
+                                 label.align=left \
+                                 label.font="$FONT_TEXT:Regular:12.0" \
+                                 icon.padding_left=12 \
+                                 icon.padding_right=10 \
+                                 label.padding_left=0 \
+                                 label.padding_right=14 \
+                                 background.drawing=off \
+                                 click_script="$PLUGIN_DIR/card.sh $1 close"
+  done
+}
+
 ##### Left: power menu | focused app #####
 
 # Power menu. Items are added to the popup via the "popup.power" position.
@@ -175,33 +208,8 @@ sketchybar --add item meeting left \
                          update_freq=60 \
                          click_script="$PLUGIN_DIR/meeting_click.sh" \
                          script="$PLUGIN_DIR/meeting.sh" \
-                         popup.background.color="$POPUP_BG" \
-                         popup.background.corner_radius=6 \
-                         popup.background.border_width=1 \
-                         popup.background.border_color="$SEPARATOR" \
-                         popup.background.shadow.drawing=on \
-                         popup.horizontal=off \
-                         popup.height=24 \
-                         popup.align=left \
-                         popup.y_offset=-4 \
+           --set meeting "${card_popup[@]}" \
            --subscribe meeting system_woke mouse.entered mouse.exited.global
-
-# Hover card rows. Pre-created and hidden: building them on hover would flash
-# an empty card while sketchybar laid them out. meeting_popup.sh fills in as
-# many as the event needs and hides the rest. No widths - the popup normalises
-# every row to the widest one on its own.
-for i in 1 2 3 4 5; do
-  sketchybar --add item "meeting.pop.$i" popup.meeting \
-             --set "meeting.pop.$i" drawing=off \
-                                    label.align=left \
-                                    label.font="$FONT_TEXT:Regular:12.0" \
-                                    icon.padding_left=12 \
-                                    icon.padding_right=10 \
-                                    label.padding_left=0 \
-                                    label.padding_right=14 \
-                                    background.drawing=off \
-                                    click_script="$PLUGIN_DIR/meeting_popup.sh close"
-done
 
 # Divider between the two "right now" items. meeting.sh hides this alongside
 # itself on the failed-fetch path, so a hidden meeting never leaves a rule
@@ -218,6 +226,9 @@ sketchybar --add item productive left \
                             script="$PLUGIN_DIR/productive.sh" \
                             click_script="$PLUGIN_DIR/productive_click.sh" \
            --subscribe productive system_woke
+
+sketchybar --set productive "${card_popup[@]}" \
+           --subscribe productive mouse.entered mouse.exited.global
 
 ##### Right side, added right-to-left #####
 
@@ -268,6 +279,9 @@ sketchybar --add item caffeine right \
                           script="$PLUGIN_DIR/caffeine.sh" \
                           click_script="$PLUGIN_DIR/caffeine_click.sh"
 
+sketchybar --set caffeine "${card_popup[@]}" \
+           --subscribe caffeine mouse.entered mouse.exited.global
+
 sketchybar --add item sep.status right --set sep.status "${separator[@]}"
 
 # Network: down/up | wifi SSID
@@ -315,6 +329,9 @@ sketchybar --add item wifi right \
                       script="$PLUGIN_DIR/wifi.sh" \
            --subscribe wifi wifi_change
 
+sketchybar --set wifi "${card_popup[@]}" \
+           --subscribe wifi mouse.entered mouse.exited.global
+
 sketchybar --add item sep.net right --set sep.net "${separator[@]}"
 
 # System: cpu | mem (one script drives both items)
@@ -335,6 +352,7 @@ sketchybar --add item cpu right \
                      label.padding_right=4 \
                      y_offset=6 \
                      click_script="open -a 'Activity Monitor'" \
+                     script="$PLUGIN_DIR/system.sh" \
            --add item mem right \
            --set mem icon="󰍛" \
                      icon.color="$AQUA" \
@@ -352,6 +370,12 @@ sketchybar --add item cpu right \
                      click_script="open -a 'Activity Monitor'" \
                      script="$PLUGIN_DIR/system.sh"
 
+sketchybar --set cpu "${card_popup[@]}" \
+           --subscribe cpu mouse.entered mouse.exited.global
+# mem is stacked ON TOP of cpu, so the pointer lands on mem, not cpu. Both open
+# the same card - system.sh dispatches either to "cpu".
+sketchybar --subscribe mem mouse.entered mouse.exited.global
+
 sketchybar --add item sep.system right --set sep.system "${separator[@]}"
 
 # Media (hides itself when nothing is playing)
@@ -366,6 +390,9 @@ sketchybar --add item media right \
                        script="$PLUGIN_DIR/media.sh" \
            --subscribe media mouse.clicked media_change
 
+sketchybar --set media "${card_popup[@]}" \
+           --subscribe media mouse.entered mouse.exited.global
+
 ##### Display watcher #####
 # Zero-width item whose only job is to re-fit the bar height when the
 # resolution changes; the startup probe above runs only at config load.
@@ -375,6 +402,9 @@ sketchybar --add item display_watch right \
                                label.drawing=off \
                                script="$PLUGIN_DIR/display.sh" \
            --subscribe display_watch display_change
+
+# Card rows are added last: every parent item must exist first.
+for c in meeting productive media cpu wifi caffeine; do card_rows_for "$c"; done
 
 ##### First paint #####
 sketchybar --update

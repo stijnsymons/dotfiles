@@ -47,4 +47,10 @@ caffeine_render() {
   fi
 }
 
-[ -n "${CAFFEINE_LIB:-}" ] || caffeine_render
+if [ -z "${CAFFEINE_LIB:-}" ]; then
+  case "${SENDER:-}" in
+    mouse.entered)                     exec "$CONFIG_DIR/plugins/card.sh" caffeine open ;;
+    mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" caffeine close ;;
+  esac
+  caffeine_render
+fi

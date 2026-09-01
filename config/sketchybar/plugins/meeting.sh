@@ -28,8 +28,8 @@ source "$CONFIG_DIR/colors.sh"
 # script for every subscribed event, and the card must open instantly rather
 # than wait on a Calendar round-trip.
 case "${SENDER:-}" in
-  mouse.entered)                     exec "$CONFIG_DIR/plugins/meeting_popup.sh" open ;;
-  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/meeting_popup.sh" close ;;
+  mouse.entered)                     exec "$CONFIG_DIR/plugins/card.sh" meeting open ;;
+  mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" meeting close ;;
 esac
 
 source "$CONFIG_DIR/plugins/fit.sh"
@@ -70,7 +70,7 @@ idle() {
 }
 
 # Routine update: also police a card left open by a missed mouse.exited.
-"$CONFIG_DIR/plugins/meeting_popup.sh" tick 2>/dev/null
+"$CONFIG_DIR/plugins/card.sh" meeting tick 2>/dev/null
 
 # --- fetch ------------------------------------------------------------------
 STALE=0

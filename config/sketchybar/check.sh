@@ -244,44 +244,55 @@ PICO="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.color')"
 case "$PICO" in "$RED"|"$GREEN"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
                 *) bad "icon colour not from palette (got '$PICO')" ;; esac
 
-echo "meeting hover card:"
-[ -x "$CONFIG_DIR/plugins/meeting_popup.sh" ] && ok "popup script executable" || bad "meeting_popup.sh not executable"
-POP_TMP="$(mktemp -d)"
-POP_STAMP="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar/meeting-popup.at"
-cat > "$POP_TMP/ev.json" <<'POPEOF'
-{"summary":"Card fixture","start":{"dateTime":"2026-01-01T09:00:00Z","timeZone":"UTC"},
- "end":{"dateTime":"2026-01-01T10:00:00Z"},"location":"Room 1",
- "attendees":[{"responseStatus":"accepted"},{"responseStatus":"declined"}],
- "description":"<p>Agenda &amp; notes</p>"}
-POPEOF
-MEETING_CACHE="$POP_TMP/ev.json" "$CONFIG_DIR/plugins/meeting_popup.sh" open >/dev/null 2>&1
-is "opens on hover" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "on"
-is "row 1 is the title" "$(sketchybar --query meeting.pop.1 2>/dev/null | jq -r '.label.value')" "Card fixture"
-# HTML entities and tags must not reach the card.
-POP_D="$(for i in 1 2 3 4 5; do sketchybar --query "meeting.pop.$i" 2>/dev/null | jq -r 'select(.geometry.drawing=="on")|.label.value'; done | tr '\n' '|')"
-case "$POP_D" in *"<p>"*|*"&amp;"*) bad "raw HTML leaked into the card: $POP_D" ;; *) ok "description stripped of HTML" ;; esac
-case "$POP_D" in *"Agenda & notes"*) ok "entities decoded" ;; *) bad "entities not decoded: $POP_D" ;; esac
-is "full event fills all 5 rows" "$(sketchybar --query meeting.pop.5 2>/dev/null | jq -r '.geometry.drawing')" "on"
-# A sparser event must hide the rows it does not need, or the card keeps the
-# previous meeting's attendees and agenda on screen.
-cat > "$POP_TMP/bare.json" <<'POPEOF'
-{"summary":"Bare","start":{"dateTime":"2026-01-01T09:00:00Z","timeZone":"UTC"},"end":{"dateTime":"2026-01-01T10:00:00Z"}}
-POPEOF
-MEETING_CACHE="$POP_TMP/bare.json" "$CONFIG_DIR/plugins/meeting_popup.sh" open >/dev/null 2>&1
-is "bare event: row 2 shown"  "$(sketchybar --query meeting.pop.2 2>/dev/null | jq -r '.geometry.drawing')" "on"
-is "bare event: row 3 hidden" "$(sketchybar --query meeting.pop.3 2>/dev/null | jq -r '.geometry.drawing')" "off"
-is "bare event: row 5 hidden" "$(sketchybar --query meeting.pop.5 2>/dev/null | jq -r '.geometry.drawing')" "off"
+echo "hover cards:"
+[ -x "$CONFIG_DIR/plugins/card.sh" ] && ok "engine executable" || bad "plugins/card.sh not executable"
+for c in meeting productive media cpu wifi caffeine; do
+  [ -r "$CONFIG_DIR/cards/$c.sh" ] || { bad "cards/$c.sh missing"; continue; }
+  # Every provider must define card_rows and emit well-formed <glyph>TAB<color>TAB<text>.
+  CROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"
+            type card_rows >/dev/null 2>&1 && card_rows 2>/dev/null )"
+  if [ -z "$CROWS" ]; then bad "$c: card_rows produced nothing"; continue; fi
+  CBAD=0
+  while IFS=$'\t' read -r g col t; do
+    [ -z "$g" ]   && { bad "$c: a row has no glyph"; CBAD=1; break; }
+    [ -z "$t" ]   && { bad "$c: a row has no text";  CBAD=1; break; }
+    case "$col" in 0x*) ;; *) bad "$c: colour '$col' not from the palette"; CBAD=1; break ;; esac
+  done <<CHKEOF
+$CROWS
+CHKEOF
+  [ "$CBAD" -eq 0 ] && ok "$c: $(printf '%s' "$CROWS" | grep -c .) well-formed rows"
+done
 
-# Watchdog: dismissal depends on mouse.exited.global, which is not guaranteed.
-printf '%s' "$(( $(date +%s) - 600 ))" > "$POP_STAMP"
-"$CONFIG_DIR/plugins/meeting_popup.sh" tick >/dev/null 2>&1
-is "watchdog closes a stale card" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "off"
-MEETING_CACHE="$POP_TMP/ev.json" "$CONFIG_DIR/plugins/meeting_popup.sh" open >/dev/null 2>&1
-"$CONFIG_DIR/plugins/meeting_popup.sh" tick >/dev/null 2>&1
-is "watchdog leaves a fresh card open" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "on"
-"$CONFIG_DIR/plugins/meeting_popup.sh" close >/dev/null 2>&1
-is "closes on exit" "$(sketchybar --query meeting 2>/dev/null | jq -r '.popup.drawing')" "off"
-rm -rf "$POP_TMP"
+# Enough pre-created rows for the longest card, or content is silently dropped.
+for c in meeting productive media cpu wifi caffeine; do
+  CN="$(sketchybar --query bar 2>/dev/null | jq -r --arg p "$c.pop." '[.items[]|select(startswith($p))]|length')"
+  CW="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"; card_rows 2>/dev/null | grep -c . )"
+  [ "${CN:-0}" -ge "${CW:-0}" ] && ok "$c: $CN rows for $CW needed" \
+                                || bad "$c: only $CN rows for $CW content lines - card truncated"
+done
+
+# Open/close and the watchdog, exercised on one card (the engine is shared).
+"$CONFIG_DIR/plugins/card.sh" wifi open >/dev/null 2>&1
+is "opens" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "on"
+CSTAMP="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar/card-wifi.at"
+printf '%s' "$(( $(date +%s) - 600 ))" > "$CSTAMP"
+"$CONFIG_DIR/plugins/card.sh" wifi tick >/dev/null 2>&1
+is "watchdog closes a stale card" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
+"$CONFIG_DIR/plugins/card.sh" wifi open >/dev/null 2>&1
+"$CONFIG_DIR/plugins/card.sh" wifi tick >/dev/null 2>&1
+is "watchdog leaves a fresh card open" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "on"
+"$CONFIG_DIR/plugins/card.sh" wifi close >/dev/null 2>&1
+is "closes" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
+
+# A close during the dwell delay must cancel the pending open, or brushing the
+# bar leaves cards appearing after the pointer has gone.
+"$CONFIG_DIR/plugins/card.sh" wifi open >/dev/null 2>&1 &
+CPID=$!
+sleep 0.15
+"$CONFIG_DIR/plugins/card.sh" wifi close >/dev/null 2>&1
+wait $CPID 2>/dev/null
+sleep 0.6
+is "close cancels a pending open" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
 
 echo "label fitting:"
 # The regression this guards: label.width referenced an undefined constant, so
