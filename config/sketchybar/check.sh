@@ -244,6 +244,40 @@ PICO="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.color')"
 case "$PICO" in "$RED"|"$GREEN"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
                 *) bad "icon colour not from palette (got '$PICO')" ;; esac
 
+echo "label fitting:"
+# The regression this guards: label.width referenced an undefined constant, so
+# it expanded to 0 and both items rendered as a bare icon. The label VALUE was
+# still correct, so nothing else noticed.
+for it in meeting productive; do
+  FD="$(sketchybar --query "$it" 2>/dev/null | jq -r '.geometry.drawing')"
+  FL="$(sketchybar --query "$it" 2>/dev/null | jq -r '.label.value')"
+  FW="$(sketchybar --query "$it" 2>/dev/null | jq -r '.bounding_rects|to_entries[0].value.size[0]|floor')"
+  if [ "$FD" != "on" ]; then
+    ok "$it hidden, nothing to fit"
+  elif [ -n "$FL" ] && [ "${FW:-0}" -le 40 ] 2>/dev/null; then
+    bad "$it has label '$FL' but renders only ${FW}pt (label.width 0?)"
+  else
+    ok "$it renders its label (${FW}pt)"
+  fi
+done
+
+source "$CONFIG_DIR/plugins/fit.sh"
+FLONG="$(printf 'x%.0s' $(seq 1 300))"
+FFIT="$(fit_label productive "$FLONG")"
+case "$FFIT" in
+  *…) ok "fit_label ellipsises overlong text" ;;
+  *)  bad "fit_label did not truncate (returned ${#FFIT} chars)" ;;
+esac
+[ "${#FFIT}" -lt 300 ] && ok "fit_label shortened 300 -> ${#FFIT} chars" || bad "fit_label returned full length"
+# Short text must pass through untouched, or every label gains a stray ellipsis.
+FSHORT="$(fit_label productive "ok")"
+is "fit_label leaves short text alone" "$FSHORT" "ok"
+# A hidden item has no x. It must still truncate (from cache or the conservative
+# default), or a newly-appearing meeting overruns the notch for a whole tick.
+FHIDDEN="$(fit_label definitely_not_an_item "$FLONG")"
+[ "${#FHIDDEN}" -lt 300 ] && ok "fit_label truncates without a laid-out item (${#FHIDDEN} chars)" \
+                          || bad "fit_label passed 300 chars through for an unlaid-out item"
+
 echo "deps:"
 for d in jq nowplaying-cli; do
   command -v "$d" >/dev/null && ok "$d" || bad "$d missing"

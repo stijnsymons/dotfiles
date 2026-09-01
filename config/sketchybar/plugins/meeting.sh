@@ -23,6 +23,11 @@
 # check.sh and for offline development.
 
 source "$CONFIG_DIR/colors.sh"
+source "$CONFIG_DIR/plugins/fit.sh"
+
+# Keep exactly what the Productive item next door currently needs, plus the
+# divider - no more, so the meeting title gets every remaining pixel.
+FIT_RESERVE="$(fit_reserve_for productive)"
 
 # launchd hands sketchybar a minimal PATH: gws-now lives in ~/bin, gws/jq in
 # the brew prefix. Without this the plugin silently never finds anything.
@@ -51,7 +56,7 @@ idle() {
                            icon="$ROOM" \
                            icon.color="$FG_DIM" \
                            label.color="$FG_DIM" \
-                           label="no meetings"
+                           label="$(fit_label "$ITEM" "no meetings" "$FIT_RESERVE")"
   exit 0
 }
 
@@ -132,4 +137,4 @@ sketchybar --set "$ITEM" drawing=on \
                          icon="$ICON" \
                          icon.color="$ICON_COLOR" \
                          label.color="$FG" \
-                         label="$SUMMARY · $REMAIN"
+                         label="$(fit_label "$ITEM" "$SUMMARY · $REMAIN" "$FIT_RESERVE")"

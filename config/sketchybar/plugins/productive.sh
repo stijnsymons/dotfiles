@@ -13,6 +13,7 @@
 # U+F017 clock (timing), U+F071 warning triangle (not timing).
 
 source "$CONFIG_DIR/colors.sh"
+source "$CONFIG_DIR/plugins/fit.sh"
 
 CACHE_DIR="$HOME/.cache/sketchybar"
 CACHE="$CACHE_DIR/productive.json"
@@ -50,9 +51,9 @@ fetch() {
 }
 
 set_running() { sketchybar --set "$NAME" drawing=on \
-                  icon="$CLOCK" icon.color="$GREEN" label="$1" label.color="$FG"; }
+                  icon="$CLOCK" icon.color="$GREEN" label="$(fit_label "$NAME" "$1")" label.color="$FG"; }
 set_idle()    { sketchybar --set "$NAME" drawing=on \
-                  icon="$WARN"  icon.color="$RED"   label="not timing" label.color="$RED"; }
+                  icon="$WARN"  icon.color="$RED"   label="$(fit_label "$NAME" "not timing")" label.color="$RED"; }
 set_unknown() { sketchybar --set "$NAME" drawing=on \
                   icon="$CLOCK" icon.color="$FG_DIM" label="--" label.color="$FG_DIM"; }
 

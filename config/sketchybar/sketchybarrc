@@ -28,6 +28,10 @@ SZ_NET=9.0            # stacked two-row items (net throughput, cpu/mem)
 W_PCT=35              # widest "100%"  at SZ_LABEL
 W_SYS=20              # widest "100%"  at SZ_NET (stacked cpu/mem rows)
 W_NET=31              # widest "99.9M" at SZ_NET
+# meeting and productive deliberately have NO width constant: plugins/fit.sh
+# sizes them to content and ellipsises against the notch every tick. A fixed
+# width there cannot grow into free space, and an undefined one silently
+# renders as a bare icon.
 W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
                       # 154 -> 200 (+30%). 35 chars x 5.70pt at FiraMono/SZ_LABEL.
                       # Headroom exists only because cpu/mem stack into one column;
@@ -168,10 +172,6 @@ sketchybar --add item meeting left \
                          icon.color="$GREEN" \
                          label.color="$FG" \
                          label.font="$FONT_TEXT:Regular:13.0" \
-                         label.max_chars=14 \
-                         label.width="$W_MEETING" \
-                         scroll_texts=on \
-                         label.scroll_duration=300 \
                          update_freq=60 \
                          click_script="$PLUGIN_DIR/meeting_click.sh" \
                          script="$PLUGIN_DIR/meeting.sh" \
@@ -189,10 +189,6 @@ sketchybar --add item productive left \
            --set productive update_freq=60 \
                             label.color="$FG" \
                             label.font="$FONT_TEXT:Regular:13.0" \
-                            label.max_chars=20 \
-                            label.width="$W_TIMING" \
-                            scroll_texts=on \
-                            label.scroll_duration=300 \
                             script="$PLUGIN_DIR/productive.sh" \
                             click_script="$PLUGIN_DIR/productive_click.sh" \
            --subscribe productive system_woke
