@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # One script, two items: cpu + mem. Runs on the cpu item's update_freq.
 #
-# pipefail matters here: the readings are `ps | awk` and `memory_pressure | awk`
-# pipelines, and a failing left side would otherwise hand awk nothing and paint
-# a confident 0% over a machine that is actually busy.
+# A failing reading must not paint a confident 0% over a machine that is
+# actually busy. Both readings are `<sampler> | awk` pipelines, so it takes two
+# halves: pipefail here, and awk printing nothing when the sampler handed it no
+# rows (sys_lib.sh). An empty reading then leaves that item untouched, showing
+# its last good value until the next tick.
 set -u
 set -o pipefail
 
@@ -28,5 +30,9 @@ color_for() { # $1 = percentage
   else echo "$AQUA"; fi
 }
 
-sketchybar --set cpu label="${CPU}%" icon.color="$(color_for "${CPU:-0}")" \
-           --set mem label="${MEM}%" icon.color="$(color_for "${MEM:-0}")"
+# Built up rather than sent as one fixed pair, so a failed sample drops out
+# instead of rendering as 0% - and still only one sketchybar spawn a tick.
+ARGS=()
+[ -n "$CPU" ] && ARGS+=(--set cpu label="${CPU}%" icon.color="$(color_for "$CPU")")
+[ -n "$MEM" ] && ARGS+=(--set mem label="${MEM}%" icon.color="$(color_for "$MEM")")
+if [ "${#ARGS[@]}" -gt 0 ]; then sketchybar "${ARGS[@]}"; fi

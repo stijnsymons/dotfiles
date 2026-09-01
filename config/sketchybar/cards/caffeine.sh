@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Keep-awake state. Reuses caffeine.sh's PID validation rather than re-deriving
 # it, so the card and the icon can never disagree about whether it is running.
 card_rows() {

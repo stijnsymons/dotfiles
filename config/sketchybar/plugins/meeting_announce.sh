@@ -26,11 +26,12 @@ OVERLAY="${MEETING_OVERLAY:-$CONFIG_DIR/bin/meeting-overlay}"
 LEAD=60                 # announce this many seconds before the start
 WINDOW=$(( LEAD + 60 )) # a tick's worth of look-ahead beyond the lead
 
-# An epoch as HH:MM in the event's own zone. One-off invites often carry no
-# .start.timeZone, only an offset dateTime, and TZ="" means UTC rather than
-# local - which renders them 2h early here - so the assignment is skipped
-# entirely instead of emptied.
-hhmm() { if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r "$1" +%H:%M; fi; }
+# Hand a claimed key back, for when the enrichment after the claim fails: the
+# next tick must be free to retry rather than read the meeting as announced.
+unclaim() {
+  grep -vF "$1	" "$SEEN" > "$SEEN.tmp.$$" 2>/dev/null
+  mv "$SEEN.tmp.$$" "$SEEN" 2>/dev/null || rm -f "$SEEN.tmp.$$"
+}
 
 [ -s "$UPCOMING" ] || exit 0
 [ -x "$OVERLAY" ]  || exit 0
@@ -58,12 +59,19 @@ while IFS= read -r ev; do
   ID="$(jq -r '.id // empty' <<<"$ev")"
   KEY="${ID}:${START}"
   grep -qF "$KEY	" "$SEEN" 2>/dev/null && continue
+  # Claimed here, not after the enrichment below. meeting.sh announces on both
+  # the 60s tick and system_woke, so a lid-open routinely has two announcers in
+  # flight, and a grep->append gap of a few hundred ms is wide enough for both
+  # to pass the guard and take the screen over twice. The failure path below
+  # hands the key back, so a failed enrichment still cannot suppress the
+  # overlay forever.
+  printf '%s\t%s\n' "$KEY" "$START" >> "$SEEN"
 
   # Enrich for the overlay: it renders, it does not re-derive any of this.
   TZ_EV="$(jq -r '.start.timeZone // empty' <<<"$ev")"
   END="$(jq -r '._e // empty' <<<"$ev")"
-  WHEN="$(hhmm "$START" "$TZ_EV")"
-  [ -n "$END" ] && WHEN="$WHEN – $(hhmm "$END" "$TZ_EV")"
+  WHEN="$(meeting_hhmm "$START" "$TZ_EV")"
+  [ -n "$END" ] && WHEN="$WHEN – $(meeting_hhmm "$END" "$TZ_EV")"
 
   N_PEOPLE="$(meeting_people "$ev" | grep -c . || true)"
   case "$TIER" in
@@ -86,18 +94,13 @@ while IFS= read -r ev; do
   PAYLOAD="$(mktemp "$SB_CACHE_DIR/announce-XXXXXX")"
   jq -c --arg t "$TIER" --arg w "$WHEN" --arg p "$PEOPLE" --arg l "$LINK" \
      '. + {_tier:$t, _when:$w, _people:$p} + (if $l == "" then {} else {_link:$l} end)' \
-     <<<"$ev" > "$PAYLOAD" 2>/dev/null || { rm -f "$PAYLOAD"; continue; }
+     <<<"$ev" > "$PAYLOAD" 2>/dev/null || { rm -f "$PAYLOAD"; unclaim "$KEY"; continue; }
 
   # Sleep the remainder so it lands at T-LEAD, not at tick time. Detached, or
   # sketchybar reaps it when the plugin returns.
   DELAY=$(( DELTA - LEAD )); [ "$DELAY" -lt 0 ] && DELAY=0
   nohup sh -c "sleep $DELAY; '$OVERLAY' '$PAYLOAD'; rm -f '$PAYLOAD'" >/dev/null 2>&1 &
   disown 2>/dev/null || true
-
-  # Marked announced only now: a failed enrichment above must not suppress the
-  # overlay forever, which is the one failure this subsystem exists to prevent.
-  # The grep guard higher up still stops a double fire within the same tick.
-  printf '%s\t%s\n' "$KEY" "$START" >> "$SEEN"
 done <<<"$(jq -c --argjson now "$NOW" --argjson window "$WINDOW" '
   .[]? | (._s | numbers) as $s | select($s > $now and $s - $now <= $window)
 ' "$UPCOMING" 2>/dev/null)"

@@ -55,6 +55,11 @@ caffeine_render() {
 }
 
 if [ -z "${CAFFEINE_LIB:-}" ]; then
+  # set -u here rather than at the top, unlike every other executed plugin:
+  # this file doubles as a sourced library (caffeine_click.sh), and forcing it
+  # on a caller that did not ask for it is exactly what a sourced file must not
+  # do. The definitions above are set-u-clean either way.
+  set -u
   card_dispatch caffeine
   caffeine_render
 fi

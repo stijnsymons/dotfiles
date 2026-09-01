@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared Productive API access for the plugins that need more than the CLI
 # exposes: resolving a booked service to its project, and starting a timer.
 #
@@ -27,18 +28,27 @@ productive_creds() {
 # an HTTP error into a non-2xx exit while keeping the body, which is the only
 # place Productive says WHY (422 service_time_tracking_disabled and friends);
 # callers all test the JSON shape, so an error body still reads as failure.
+#
+# Only GET retries. curl replays 429/5xx and dropped connections regardless of
+# method, and the one mutating call here is POST /timers: a start the server
+# had already committed comes back from the retry as 422 timer_already_started,
+# which productive_start.sh reads as a failure and rolls the time entry out
+# from under the timer that is in fact running.
 productive_api() {
-  local method="$1" path="$2" body="${3:-}"
+  local method="$1" path="$2" body="${3:-}" retry=""
+  [ "$method" = GET ] && retry="--retry 2 --retry-max-time 20"
   productive_creds || return 1
   if [ -n "$body" ]; then
-    curl -sS -m 25 --fail-with-body --retry 2 --retry-max-time 20 -X "$method" \
+    # shellcheck disable=SC2086  # $retry is a flag list, word splitting is the point
+    curl -sS -m 25 --fail-with-body $retry -X "$method" \
       -H "Content-Type: application/vnd.api+json" \
       -d "$body" --config - "https://api.productive.io/api/v2/$path" 2>/dev/null <<CURLRC
 header = "X-Auth-Token: $PRODUCTIVE_API_TOKEN"
 header = "X-Organization-Id: $PRODUCTIVE_ORG_ID"
 CURLRC
   else
-    curl -sS -m 25 --fail-with-body --retry 2 --retry-max-time 20 -X "$method" \
+    # shellcheck disable=SC2086  # as above
+    curl -sS -m 25 --fail-with-body $retry -X "$method" \
       -H "Content-Type: application/vnd.api+json" \
       --config - "https://api.productive.io/api/v2/$path" 2>/dev/null <<CURLRC
 header = "X-Auth-Token: $PRODUCTIVE_API_TOKEN"

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared meeting classification. Sourced by meeting.sh, cards/meeting.sh and
 # meeting_announce.sh so the item, the card and the overlay can never disagree
 # about what colour a meeting is.
@@ -5,6 +6,18 @@
 # Sourced, not executed. CONFIG_DIR must be set and colors.sh already sourced.
 
 MEETING_INTERNAL_DOMAIN="${MEETING_INTERNAL_DOMAIN:-novemberfive.co}"
+
+# An epoch as HH:MM in the event's own zone. One-off invites often carry no
+# .start.timeZone, only an offset dateTime, and TZ="" means UTC rather than
+# local - which renders them 2h early here - so the assignment is skipped
+# entirely instead of emptied.
+#
+# Here rather than in the card and the announcer both: they had byte-identical
+# copies, which is one TZ bug away from the card and the overlay disagreeing
+# about when a meeting starts.
+meeting_hhmm() {     # <epoch> <tz-or-empty>  ->  HH:MM
+  if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r "$1" +%H:%M; fi
+}
 
 # The real human attendees: everyone except yourself, and except meeting rooms.
 #

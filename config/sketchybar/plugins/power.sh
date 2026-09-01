@@ -9,12 +9,19 @@
 #   force - Cmd+Opt+Esc, the Force Quit dialog.
 #
 # Test seam, mirroring meeting_click.sh's --print: --list-actions names the
-# actions this script handles, one per line, so check.sh can assert the set
-# without reading the case arms - reindenting one is not a regression.
+# actions this script handles, one per line, so check.sh can assert the set.
+#
+# Read out of the case statement below rather than kept as a second list beside
+# it: a hand-maintained array is a copy, and a copy lets you delete an arm while
+# the suite still reports the action as handled. The pattern binds to the arm
+# LABELS, not to their indentation - reformatting is still not a regression -
+# so the only rule is that an arm ends its `;;` on the line it opened.
 set -u
 
-ACTIONS=(toggle close about settings appstore force lock sleep logout restart shutdown)
-[ "${1:-}" = "--list-actions" ] && { printf '%s\n' "${ACTIONS[@]}"; exit 0; }
+if [ "${1:-}" = "--list-actions" ]; then
+  sed -nE 's/^[[:space:]]*([a-z][a-z|]*)\).*;;[[:space:]]*$/\1/p' "$0" | tr '|' '\n'
+  exit 0
+fi
 
 close() { sketchybar --set power popup.drawing=off; }
 

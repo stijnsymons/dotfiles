@@ -37,10 +37,12 @@ esac
 # links with their passcodes, timesheet rows - so it is ours alone rather than
 # the world-readable 755 a plain mkdir leaves behind. This is the only place
 # that spells ~/.cache/sketchybar out; everything else takes it from here and
-# nothing else creates it.
+# nothing else creates it. The chmod rides along with the mkdir rather than
+# running every time: this file is sourced by every plugin on every tick, and
+# an unconditional chmod is one more spawn a second for a mode that only ever
+# changes when the directory is first created.
 export SB_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
-[ -d "$SB_CACHE_DIR" ] || mkdir -p "$SB_CACHE_DIR"
-chmod 700 "$SB_CACHE_DIR" 2>/dev/null
+[ -d "$SB_CACHE_DIR" ] || { mkdir -p "$SB_CACHE_DIR" && chmod 700 "$SB_CACHE_DIR"; } 2>/dev/null
 
 # Card rows are tab-separated and their fourth field is run by sh, so a literal
 # tab in free text - a calendar invite, a track title, an SSID - would shift the

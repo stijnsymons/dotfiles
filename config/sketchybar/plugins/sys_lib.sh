@@ -14,7 +14,10 @@
 #
 # Sourced, not executed. Nothing else needs to be sourced first.
 
-SYS_NCPU="${SYS_NCPU:-}"   # cached: hw.ncpu does not change under a running bar
+# Memoised per run, not across ticks: every tick is a fresh process, so this
+# only saves the second sysctl when one script calls cpu_pct twice. Export it
+# from the environment to skip the spawn entirely.
+SYS_NCPU="${SYS_NCPU:-}"
 
 # cpu_pct -> whole-number percent of total CPU capacity in use
 cpu_pct() {
@@ -23,7 +26,10 @@ cpu_pct() {
   # ps counts per-core, so a fully loaded 10-core machine sums to ~1000. Capped
   # at 100: over-100% is meaningless in a percentage label, and check.sh asserts
   # the 0-100 range.
-  ps -A -o %cpu= | awk -v n="$SYS_NCPU" '{s+=$1} END {p=s/n; if (p>100) p=100; printf "%.0f", p}'
+  #
+  # No rows means ps failed, not that the machine is idle - print nothing, so a
+  # broken sample reads as absent rather than as a confident 0%.
+  ps -A -o %cpu= | awk -v n="$SYS_NCPU" '{s+=$1} END {if (NR==0) exit 1; p=s/n; if (p>100) p=100; printf "%.0f", p}'
 }
 
 # mem_pct -> whole-number percent of memory in use.

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared timer colour rule, used by both the bar item and the card so the
 # colour you click in the card is the colour the item turns.
 #

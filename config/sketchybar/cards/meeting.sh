@@ -1,15 +1,10 @@
+# shellcheck shell=bash
 # Current meeting, then what is coming up. Reads only the JSON meeting.sh
 # cached, so opening the card is free - no calendar round-trip on hover.
 #
-# meeting_lib.sh is sourced for the tier colours; card.sh only brings in
-# colors.sh and fit.sh.
+# meeting_lib.sh is sourced for the tier colours and meeting_hhmm; card.sh only
+# brings in colors.sh and fit.sh.
 source "$CONFIG_DIR/plugins/meeting_lib.sh"
-#
-# An epoch as HH:MM in the event's own zone. One-off invites often carry no
-# .start.timeZone, only an offset dateTime, and TZ="" means UTC rather than
-# local - which renders them 2h early here - so the assignment is skipped
-# entirely instead of emptied.
-meeting_hhmm() { if [ -n "$2" ]; then TZ="$2" date -r "$1" +%H:%M; else date -r "$1" +%H:%M; fi; }
 #
 # Row actions: the conference row launches Zoom/Teams natively; every other row
 # points Brave's pinned calendar tab at this event's htmlLink, so a click lands
@@ -48,7 +43,8 @@ card_rows() {
   link="$(MEETING_CACHE="$cache" "$CONFIG_DIR/plugins/meeting_click.sh" --print 2>/dev/null)"
   loc="$(jq -r '.location // empty' <<<"$ev")"
   if [ -n "$link" ]; then
-    printf '󰍹\t%s\tJoin  ·  %s\t%s\n' "$AQUA" "$(sed -E 's|^https?://||' <<<"$link")" \
+    printf '󰍹\t%s\tJoin  ·  %s\t%s\n' "$AQUA" \
+           "$(card_text "$(sed -E 's|^https?://||' <<<"$link")")" \
            "$CONFIG_DIR/plugins/open_conf.sh"
   elif [ -n "$loc" ]; then printf '󰍎\t%s\t%s\t%s\n' "$AQUA" "$(card_text "$loc")" "$cal"; fi
   att="$(jq -r '(.attendees // []) as $a | if ($a|length)==0 then empty else

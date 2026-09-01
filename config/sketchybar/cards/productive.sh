@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Productive.io timer. Reads productive.sh's cache - no API call to open.
 #
 # The detail rows go to Brave's pinned Productive tab. The planning rows below
@@ -36,7 +37,10 @@ card_rows() {
     iso="$(printf '%s' "$started" | sed -E 's/\.[0-9]+//; s/Z$/+0000/; s/([+-][0-9]{2}):([0-9]{2})$/\1\2/')"
     when="$(date -jf '%Y-%m-%dT%H:%M:%S%z' "$iso" +%H:%M 2>/dev/null)"
     [ -n "$when" ] || when="$(date -jf '%Y-%m-%dT%H:%M:%S' "${started%%[.+Z]*}" +%H:%M 2>/dev/null)"
-    printf '󰄉\t%s\tstarted %s\t%s\n' "$FG_DIM" "${when:-$started}" "$tab"
+    # Both dates failing falls back to the raw API string, which is the one
+    # path here that prints a field the API wrote - so it goes through card_text
+    # like every other one.
+    printf '󰄉\t%s\tstarted %s\t%s\n' "$FG_DIM" "${when:-$(card_text "$started")}" "$tab"
   fi
 
   note="$(jq -r '.note // empty' <<<"$j")"

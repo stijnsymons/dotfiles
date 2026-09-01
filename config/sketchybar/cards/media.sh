@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Now playing. One nowplaying-cli call (~115ms) for every field, as media.sh
 # documents - asking for keys individually costs the same each time.
 card_rows() {

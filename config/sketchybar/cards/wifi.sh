@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Wi-Fi detail. networksetup -getairportnetwork is broken on macOS 15+, so the
 # SSID comes from ipconfig getsummary exactly as wifi.sh does.
 card_rows() {

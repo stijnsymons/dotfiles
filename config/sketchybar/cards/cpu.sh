@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # CPU / memory detail. `ps -r` is already sorted by CPU, so the top consumers
 # cost one call - no `top` sampling loop, which would stall the card ~2s.
 #
