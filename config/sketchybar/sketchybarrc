@@ -44,19 +44,44 @@ NET_ROW=44            # one throughput row: icon + W_NET. Negative padding of
 ##### Bar #####
 # Solid full-width bar flush to the top edge. No y_offset/margin = no floating.
 #
-# topmost=on because of the second display. macOS only reserves a top inset on
-# a screen that shows the menu bar; with "Displays have separate Spaces" off
-# (defaults read com.apple.spaces spans-displays = 1) that is the built-in one
-# only - and there it is the NOTCH doing the reserving, not the menu bar, which
-# is set to auto-hide. So an external screen reserves nothing, and a maximised
-# window takes its full height and covers a bar drawn at the default layer -20.
-# Drawing above the window layer is what keeps the bar visible on every screen.
+# topmost is OFF. macOS only reserves a top inset on a screen that shows the
+# menu bar; with "Displays have separate Spaces" off (com.apple.spaces
+# spans-displays = 1) that is the built-in one only - and there it is the NOTCH
+# reserving it, not the menu bar, which auto-hides. So an external screen
+# reserves nothing at all.
 #
-# The trade-off: windows still extend UNDER the bar there rather than being
-# kept clear of it, so the top ~32pt of a maximised window is hidden behind it.
-# The alternative is enabling separate Spaces (a logout, and a second menu bar
-# on every screen), which reserves the inset properly.
+# topmost=on was tried for that (it draws the bar above windows, so it survives
+# a maximised window on the external screen) and reverted: it also draws above
+# the auto-revealed menu bar, making the real menu unreachable, and windows
+# still extend UNDER the bar rather than being kept clear of it - so the top
+# ~32pt of a maximised window sits hidden behind it. Both on the external
+# screen only; the notch keeps the built-in honest.
+#
+# With topmost=off the menu bar is reachable and nothing is buried, at the cost
+# of a maximised window on the external screen covering the bar entirely.
+#
+# topmost=window is documented as a middle setting ("on top of all windows"
+# rather than of everything) which would have kept the bar over fullscreen
+# windows while leaving the menu bar reachable. It does not exist in practice:
+# sketchybar v2.24.0 reads `topmost=window` back as `on`. Verified by setting
+# it and re-querying after a reload. So there are only two states here.
+#
+# show_in_fullscreen=on puts the bar on fullscreen SPACES; whether it then
+# draws above the fullscreen window still depends on topmost.
+#
+# The real fix is a window manager reserving the inset (AeroSpace
+# gaps.outer.top per monitor, or yabai external_bar) - macOS will not reserve
+# space for a third-party bar on its own. Note SketchyBar's own docs require
+# "Displays have separate Spaces" ON, which this machine has OFF.
+#
+# display=main draws the bar on the PRIMARY display only - the one macOS gives
+# the menu bar to. Make the external screen primary (System Settings ->
+# Displays -> Arrange, drag the white menu bar strip onto it) and the bar
+# follows it there, while the MacBook gets neither a menu bar nor a bar.
+# Undock and primary reverts to the built-in, so the bar comes back on its own.
+# No display index to maintain: "main" tracks whatever macOS considers primary.
 sketchybar --bar height="$BAR_HEIGHT" \
+                 display=main \
                  position=top \
                  y_offset=0 \
                  margin=0 \
@@ -66,7 +91,8 @@ sketchybar --bar height="$BAR_HEIGHT" \
                  blur_radius=0 \
                  shadow=off \
                  sticky=on \
-                 topmost=on \
+                 show_in_fullscreen=on \
+                 topmost=off \
                  padding_left=8 \
                  padding_right=8
 

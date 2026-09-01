@@ -13,7 +13,11 @@
 // Run with: swift bin/screen-metrics.swift
 import AppKit
 
-guard let s = NSScreen.main ?? NSScreen.screens.first else {
+// screens[0], not NSScreen.main: .main is whichever screen holds keyboard
+// focus, so on two displays it flips as you click between them and the bar
+// gets sized from a screen it is not on. screens[0] is the primary - the one
+// with the menu bar, which is exactly where `--bar display=main` draws.
+guard let s = NSScreen.screens.first else {
     print("38 0 0 0")
     exit(0)
 }
