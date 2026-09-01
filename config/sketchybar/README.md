@@ -117,6 +117,23 @@ Things that are not obvious and cost real time to work out:
 - **`U+F8FF` (the  literal) is absent from Hack Nerd Font.** The Apple glyph is
   `U+F179`. Glyphs prone to being dropped by editors are written as octal
   escapes and asserted byte-wise in `check.sh`.
+- **Popups only ever draw on the main display.** Click a bar item on an
+  external screen and its card appears on the laptop. This is not
+  configurable: `associated_display` on the popup rows only hides them (on
+  both screens), and hovering, real clicks and CLI triggers on the second
+  display all render at the main display's coordinates. Verified by
+  screenshotting both screens with a card open — the bar draws on both, the
+  card only on the main one. Accepted as-is; the cards are a laptop-screen
+  feature. It does follow the main display, so in clamshell the cards appear
+  on whichever external screen macOS has made primary.
+- **An external screen reserves no top inset,** because macOS gives the menu
+  bar to one display and, with `com.apple.spaces spans-displays = 1`
+  ("Displays have separate Spaces" off), that is the built-in one. On the
+  MacBook it is the *notch* reserving the 32pt, not the menu bar, which
+  auto-hides. So a maximised window on an external screen takes its full
+  height and would cover the bar — hence `topmost=on`. The bar then draws
+  above windows there, but windows still extend underneath it rather than
+  being kept clear.
 - **SketchyBar windows sit at layer −20,** so `screencapture` cannot see the
   bar — neither by region nor full screen. Verify rendering by eye.
 - **`alias` items are display-only.** They mirror the image; clicks are not
