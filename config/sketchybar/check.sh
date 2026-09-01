@@ -341,14 +341,16 @@ case "$CCAL" in
   *) bad "first meeting row does not target Brave tab 2 (got '$CCAL')" ;;
 esac
 
-# Productive: every row goes to tab 3, whatever the state.
+# Productive: detail rows go to tab 3; the planning rows deliberately do not -
+# they start a timer on that project instead, which is the point of them.
 CPROD="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/productive.sh"
           card_rows 2>/dev/null | awk -F'\t' '{print $4}' | sort -u )"
-case "$CPROD" in
-  *"brave_tab.sh 3"*) [ "$(printf '%s\n' "$CPROD" | grep -c .)" -eq 1 ] \
-     && ok "every productive row -> Brave tab 3" || bad "productive rows disagree: $CPROD" ;;
-  *) bad "productive rows do not target tab 3 (got '$CPROD')" ;;
-esac
+CP_TAB="$(printf '%s\n' "$CPROD" | grep -c 'brave_tab.sh 3' || true)"
+CP_START="$(printf '%s\n' "$CPROD" | grep -c 'productive_start.sh' || true)"
+CP_OTHER="$(printf '%s\n' "$CPROD" | grep -cv 'brave_tab.sh 3\|productive_start.sh' || true)"
+[ "$CP_TAB" -ge 1 ] && [ "$CP_OTHER" -eq 0 ] \
+  && ok "productive rows -> tab 3 ($CP_TAB) or start-timer ($CP_START)" \
+  || bad "productive rows disagree: $CPROD"
 
 # Media: exactly one actionable row, and it is the transport control at the end.
 CMED="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/media.sh"; card_rows 2>/dev/null )"
