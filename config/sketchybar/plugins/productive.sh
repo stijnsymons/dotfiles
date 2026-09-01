@@ -41,6 +41,11 @@ fi
 
 mkdir -p "$CACHE_DIR"
 
+# Keep this week's planning cache warm for the card. Cheap: it returns
+# immediately unless the cache is older than its TTL, so this is a stat()
+# on all but one tick an hour.
+"$CONFIG_DIR/plugins/productive_plan.sh" >/dev/null 2>&1 || true
+
 # Minutes -> "3h45m" / "45m".
 fmt() {
   local m=${1:-0}
@@ -49,16 +54,25 @@ fmt() {
   else printf '%dm' "$m"; fi
 }
 
+# Test seam, mirroring meeting.sh's MEETING_FIXTURE: read the timer JSON from
+# disk instead of the API, so check.sh can assert the colour rules without a
+# live timer (and without starting one).
 fetch() {
   local out
-  out="$(productive timer --json 2>/dev/null)"
+  if [ -n "${PRODUCTIVE_FIXTURE:-}" ]; then
+    out="$(cat "$PRODUCTIVE_FIXTURE" 2>/dev/null)"
+  else
+    out="$(productive timer --json 2>/dev/null)"
+  fi
   printf '%s' "$out" | jq -e 'has("running")' >/dev/null 2>&1 || return 1
   printf '%s' "$out" >"$CACHE"
   printf '%s' "$out"
 }
 
+source "$CONFIG_DIR/plugins/productive_colors.sh"
+
 set_running() { sketchybar --set "$NAME" drawing=on \
-                  icon="$CLOCK" icon.color="$GREEN" label="$(fit_label "$NAME" "$1")" label.color="$FG"; }
+                  icon="$CLOCK" icon.color="${2:-$GREEN}" label="$(fit_label "$NAME" "$1")" label.color="${2:-$FG}"; }
 set_idle()    { sketchybar --set "$NAME" drawing=on \
                   icon="$WARN"  icon.color="$RED"   label="$(fit_label "$NAME" "not timing")" label.color="$RED"; }
 set_unknown() { sketchybar --set "$NAME" drawing=on \
@@ -72,16 +86,20 @@ render() {        # $1 = json, $2 = age of that json in seconds
     return
   fi
 
-  { IFS= read -r what; IFS= read -r elapsed; } <<JQEOF
+  local project task service
+  { IFS= read -r what; IFS= read -r elapsed; IFS= read -r project; IFS= read -r task; IFS= read -r service; } <<JQEOF
 $(printf '%s' "$json" | jq -r '
    ( [ (.project // empty), (.service // empty), (.task // empty) ]
        | map(select(length > 0)) | join(" · ") ),
-   ( .elapsed_minutes // 0 )')
+   ( .elapsed_minutes // 0 ),
+   ( .project // "" ),
+   ( .task // "" ),
+   ( .service // "" )')
 JQEOF
 
   # A running clock keeps running: age the cached figure forward so a served
   # cache never shows a stale number.
-  set_running "${what:-timing} $(fmt $((elapsed + age / 60)))"
+  set_running "${what:-timing} $(fmt $((elapsed + age / 60)))" "$(timer_color "$project" "$task" "$service")"
 }
 
 if JSON="$(fetch)"; then
