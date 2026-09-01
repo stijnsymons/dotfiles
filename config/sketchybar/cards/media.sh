@@ -12,6 +12,11 @@ RAWEOF
   printf '󰎈\t%s\t%s\n' "$GREEN" "$title"
   [ -n "$artist" ] && [ "$artist" != "null" ] && printf '󰠃\t%s\t%s\n' "$FG"     "$artist"
   [ -n "$album"  ] && [ "$album"  != "null" ] && printf '󰀥\t%s\t%s\n' "$FG_DIM" "$album"
-  if [ "$rate" = "1" ]; then printf '󰐊\t%s\tPlaying\n' "$AQUA"
-  else printf '󰏤\t%s\tPaused\n' "$YELLOW"; fi
+  # Transport control, last row: the card's one actionable line. Everything
+  # above it is information, so a stray click cannot change playback.
+  if [ "$rate" = "1" ]; then
+    printf '󰏤\t%s\tPause\t%s\n' "$YELLOW" "nowplaying-cli togglePlayPause"
+  else
+    printf '󰐊\t%s\tPlay\t%s\n'  "$AQUA"   "nowplaying-cli togglePlayPause"
+  fi
 }

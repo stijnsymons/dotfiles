@@ -89,7 +89,7 @@ separator=(
 # plugins/card.sh owns the dwell delay, cancellation and the stuck-card
 # watchdog; cards/<item>.sh supplies the rows. Rows are pre-created and hidden
 # because building them on hover flashes an empty card while sketchybar lays
-# them out. Six rows each - the cpu card is the longest at six.
+# them out. Eight rows each - the cpu card is the longest at seven.
 card_popup=(
   popup.background.color="$POPUP_BG"
   popup.background.corner_radius=6
@@ -104,7 +104,7 @@ card_popup=(
 
 card_rows_for() { # card_rows_for <item>
   local i
-  for i in 1 2 3 4 5 6; do
+  for i in 1 2 3 4 5 6 7 8; do
     sketchybar --add item "$1.pop.$i" "popup.$1" \
                --set "$1.pop.$i" drawing=off \
                                  label.align=left \
@@ -206,10 +206,10 @@ sketchybar --add item meeting left \
                          label.color="$FG" \
                          label.font="$FONT_TEXT:Regular:13.0" \
                          update_freq=60 \
-                         click_script="$PLUGIN_DIR/meeting_click.sh" \
+                         click_script="$PLUGIN_DIR/card.sh meeting toggle" \
                          script="$PLUGIN_DIR/meeting.sh" \
            --set meeting "${card_popup[@]}" \
-           --subscribe meeting system_woke mouse.entered mouse.exited.global
+           --subscribe meeting system_woke mouse.exited.global
 
 # Divider between the two "right now" items. meeting.sh hides this alongside
 # itself on the failed-fetch path, so a hidden meeting never leaves a rule
@@ -224,11 +224,11 @@ sketchybar --add item productive left \
                             label.color="$FG" \
                             label.font="$FONT_TEXT:Regular:13.0" \
                             script="$PLUGIN_DIR/productive.sh" \
-                            click_script="$PLUGIN_DIR/productive_click.sh" \
+                            click_script="$PLUGIN_DIR/card.sh productive toggle" \
            --subscribe productive system_woke
 
 sketchybar --set productive "${card_popup[@]}" \
-           --subscribe productive mouse.entered mouse.exited.global
+           --subscribe productive mouse.exited.global
 
 ##### Right side, added right-to-left #####
 
@@ -277,10 +277,10 @@ sketchybar --add item caffeine right \
            --set caffeine update_freq=30 \
                           label.drawing=off \
                           script="$PLUGIN_DIR/caffeine.sh" \
-                          click_script="$PLUGIN_DIR/caffeine_click.sh"
+                          click_script="$PLUGIN_DIR/card.sh caffeine toggle"
 
 sketchybar --set caffeine "${card_popup[@]}" \
-           --subscribe caffeine mouse.entered mouse.exited.global
+           --subscribe caffeine mouse.exited.global
 
 sketchybar --add item sep.status right --set sep.status "${separator[@]}"
 
@@ -325,12 +325,12 @@ sketchybar --add item net_up right \
 sketchybar --add item wifi right \
            --set wifi update_freq=15 \
                       label.drawing=off \
-                      click_script="open 'x-apple.systempreferences:com.apple.wifi-settings-extension'" \
+                      click_script="$PLUGIN_DIR/card.sh wifi toggle" \
                       script="$PLUGIN_DIR/wifi.sh" \
            --subscribe wifi wifi_change
 
 sketchybar --set wifi "${card_popup[@]}" \
-           --subscribe wifi mouse.entered mouse.exited.global
+           --subscribe wifi mouse.exited.global
 
 sketchybar --add item sep.net right --set sep.net "${separator[@]}"
 
@@ -351,7 +351,7 @@ sketchybar --add item cpu right \
                      label.align=left \
                      label.padding_right=4 \
                      y_offset=6 \
-                     click_script="open -a 'Activity Monitor'" \
+                     click_script="$PLUGIN_DIR/card.sh cpu toggle" \
                      script="$PLUGIN_DIR/system.sh" \
            --add item mem right \
            --set mem icon="󰍛" \
@@ -367,14 +367,14 @@ sketchybar --add item cpu right \
                      y_offset=-6 \
                      padding_right="-$SYS_ROW" \
                      update_freq=10 \
-                     click_script="open -a 'Activity Monitor'" \
+                     click_script="$PLUGIN_DIR/card.sh cpu toggle" \
                      script="$PLUGIN_DIR/system.sh"
 
 sketchybar --set cpu "${card_popup[@]}" \
-           --subscribe cpu mouse.entered mouse.exited.global
+           --subscribe cpu mouse.exited.global
 # mem is stacked ON TOP of cpu, so the pointer lands on mem, not cpu. Both open
 # the same card - system.sh dispatches either to "cpu".
-sketchybar --subscribe mem mouse.entered mouse.exited.global
+sketchybar --subscribe mem mouse.exited.global
 
 sketchybar --add item sep.system right --set sep.system "${separator[@]}"
 
@@ -388,10 +388,11 @@ sketchybar --add item media right \
                        scroll_texts=off \
                        update_freq=5 \
                        script="$PLUGIN_DIR/media.sh" \
-           --subscribe media mouse.clicked media_change
+                       click_script="$PLUGIN_DIR/card.sh media toggle" \
+           --subscribe media media_change
 
 sketchybar --set media "${card_popup[@]}" \
-           --subscribe media mouse.entered mouse.exited.global
+           --subscribe media mouse.exited.global
 
 ##### Display watcher #####
 # Zero-width item whose only job is to re-fit the bar height when the

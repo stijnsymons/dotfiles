@@ -14,4 +14,6 @@ card_rows() {
   dns="$(scutil --dns 2>/dev/null | awk '/nameserver\[0\]/{print $3; exit}')"
   [ -n "$dns" ] && printf '󰇖\t%s\tDNS %s\n' "$FG_DIM" "$dns"
   printf '󰓅\t%s\t%s\n' "$AQUA" "$(ipconfig getsummary "$iface" 2>/dev/null | awk -F': ' '/LinkStatusActive/{print "link active"; exit}' || echo "link up")"
+  printf '󰒓\t%s\tOpen Wi-Fi settings\t%s\n' "$AQUA" \
+         "open 'x-apple.systempreferences:com.apple.wifi-settings-extension'"
 }

@@ -7,5 +7,6 @@ card_rows() {
   printf '󰻠\t%s\tCPU %s%%   ·   Memory %s%%\n' "$AQUA" "${cpu:-?}" "${mem:-?}"
   printf '󰍛\t%s\t%s\n' "$FG_DIM" "$(sysctl -n hw.memsize | awk '{printf "%.0f GB installed", $1/1073741824}')  ·  $(sysctl -n hw.ncpu) cores"
   ps -Aceo pcpu,comm -r 2>/dev/null | awk 'NR>1 && NR<=4 {printf "%s\t%s\t%-18s %5.1f%%\n", "󰘳", "'"$FG"'", $2, $1}'
-  printf '󰄉\t%s\tup %s\n' "$FG_DIM" "$(uptime | sed -E 's/.*up[[:space:]]+([^,]*(,[[:space:]]*[0-9]+:[0-9]+)?).*/\1/' | sed -E 's/[[:space:]]+/ /g')"
+  printf '󰄉\t%s\tup %s\t\n' "$FG_DIM" "$(uptime | sed -E 's/.*up[[:space:]]+([^,]*(,[[:space:]]*[0-9]+:[0-9]+)?).*/\1/' | sed -E 's/[[:space:]]+/ /g')"
+  printf '󰘸\t%s\tOpen Activity Monitor\t%s\n' "$AQUA" "open -a 'Activity Monitor'"
 }

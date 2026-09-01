@@ -284,15 +284,79 @@ is "watchdog leaves a fresh card open" "$(sketchybar --query wifi 2>/dev/null | 
 "$CONFIG_DIR/plugins/card.sh" wifi close >/dev/null 2>&1
 is "closes" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
 
-# A close during the dwell delay must cancel the pending open, or brushing the
-# bar leaves cards appearing after the pointer has gone.
-"$CONFIG_DIR/plugins/card.sh" wifi open >/dev/null 2>&1 &
-CPID=$!
-sleep 0.15
-"$CONFIG_DIR/plugins/card.sh" wifi close >/dev/null 2>&1
-wait $CPID 2>/dev/null
-sleep 0.6
-is "close cancels a pending open" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
+# Click toggles: a second click on the same item must dismiss, not re-open.
+"$CONFIG_DIR/plugins/card.sh" wifi toggle >/dev/null 2>&1
+is "click opens" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "on"
+"$CONFIG_DIR/plugins/card.sh" wifi toggle >/dev/null 2>&1
+is "click again closes" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
+
+# Only one card at a time: mouse.exited.global does not reliably fire between
+# two quick clicks on different items.
+"$CONFIG_DIR/plugins/card.sh" wifi toggle >/dev/null 2>&1
+"$CONFIG_DIR/plugins/card.sh" cpu toggle  >/dev/null 2>&1
+CO="$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')$(sketchybar --query cpu 2>/dev/null | jq -r '.popup.drawing')"
+is "opening one card closes the other" "$CO" "offon"
+"$CONFIG_DIR/plugins/card.sh" cpu close >/dev/null 2>&1
+
+# Hover must be gone entirely.
+grep -rq "mouse.entered" "$CONFIG_DIR/sketchybarrc" "$CONFIG_DIR/plugins" "$CONFIG_DIR/cards" 2>/dev/null \
+  && bad "mouse.entered still wired somewhere" || ok "no hover wiring left"
+
+echo "card row actions:"
+# Every row must carry a click_script, or a row silently does nothing.
+"$CONFIG_DIR/plugins/card.sh" meeting open >/dev/null 2>&1
+CMISS=0
+for i in 1 2 3 4 5 6 7 8; do
+  CQ="$(sketchybar --query "meeting.pop.$i" 2>/dev/null)"
+  [ "$(printf '%s' "$CQ" | jq -r '.geometry.drawing')" = "on" ] || continue
+  [ -n "$(printf '%s' "$CQ" | jq -r '.scripting.click_script // ""')" ] || CMISS=1
+done
+[ "$CMISS" -eq 0 ] && ok "every visible meeting row has a click_script" || bad "a meeting row has no click_script"
+"$CONFIG_DIR/plugins/card.sh" meeting close >/dev/null 2>&1
+
+# The conference row must resolve to a native app URI, not an https bounce.
+CT="$(mktemp -d)"
+cat > "$CT/zoom.json" <<'CHKZOOM'
+{"summary":"Z","end":{"dateTime":"2099-01-01T00:00:00Z"},
+ "conferenceData":{"entryPoints":[{"entryPointType":"video","uri":"https://acme.zoom.us/j/99887766?pwd=SEKRIT"}]}}
+CHKZOOM
+cat > "$CT/teams.json" <<'CHKTEAMS'
+{"summary":"T","end":{"dateTime":"2099-01-01T00:00:00Z"},
+ "description":"<a href=\"https://teams.microsoft.com/l/meetup-join/19%3ax/0?context=y\">Join</a>"}
+CHKTEAMS
+CZ="$(MEETING_CACHE="$CT/zoom.json"  "$CONFIG_DIR/plugins/open_conf.sh" --print 2>/dev/null)"
+CM="$(MEETING_CACHE="$CT/teams.json" "$CONFIG_DIR/plugins/open_conf.sh" --print 2>/dev/null)"
+is "zoom -> zoommtg app URI"  "$CZ" "zoommtg://acme.zoom.us/join?confno=99887766&pwd=SEKRIT"
+case "$CM" in msteams://teams.microsoft.com/l/meetup-join/*) ok "teams -> msteams app URI" ;;
+              *) bad "teams not translated (got '$CM')" ;; esac
+rm -rf "$CT"
+
+# Calendar rows must target the detail view. htmlLink redirects to the week
+# view - verified against the live tab title - so the eid/eventedit form is used.
+CCAL="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/meeting.sh"
+         card_rows 2>/dev/null | awk -F'\t' 'NR==1{print $4}' )"
+case "$CCAL" in
+  *"brave_tab.sh 2"*eventedit*) ok "calendar rows open the event detail" ;;
+  *"brave_tab.sh 2"*)           ok "calendar rows focus tab 2 (no eid on this event)" ;;
+  *) bad "first meeting row does not target Brave tab 2 (got '$CCAL')" ;;
+esac
+
+# Productive: every row goes to tab 3, whatever the state.
+CPROD="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/productive.sh"
+          card_rows 2>/dev/null | awk -F'\t' '{print $4}' | sort -u )"
+case "$CPROD" in
+  *"brave_tab.sh 3"*) [ "$(printf '%s\n' "$CPROD" | grep -c .)" -eq 1 ] \
+     && ok "every productive row -> Brave tab 3" || bad "productive rows disagree: $CPROD" ;;
+  *) bad "productive rows do not target tab 3 (got '$CPROD')" ;;
+esac
+
+# Media: exactly one actionable row, and it is the transport control at the end.
+CMED="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/media.sh"; card_rows 2>/dev/null )"
+CACT="$(printf '%s\n' "$CMED" | awk -F'\t' '$4!=""' | wc -l | tr -d ' ')"
+CLAST="$(printf '%s\n' "$CMED" | tail -1 | awk -F'\t' '{print $4}')"
+is "media has one actionable row" "$CACT" "1"
+case "$CLAST" in *togglePlayPause*) ok "play/pause is the last row" ;;
+                 *) bad "last media row is not the transport control (got '$CLAST')" ;; esac
 
 echo "label fitting:"
 # The regression this guards: label.width referenced an undefined constant, so

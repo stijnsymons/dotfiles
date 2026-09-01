@@ -6,7 +6,6 @@ source "$CONFIG_DIR/colors.sh"
 # script for every subscribed event; card.sh owns the dwell delay so the card
 # does not fire while the pointer is merely crossing the bar.
 case "${SENDER:-}" in
-  mouse.entered)                     exec "$CONFIG_DIR/plugins/card.sh" cpu open ;;
   mouse.exited|mouse.exited.global)  exec "$CONFIG_DIR/plugins/card.sh" cpu close ;;
 esac
 

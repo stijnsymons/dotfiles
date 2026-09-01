@@ -8,9 +8,9 @@ card_rows() {
     start="$(ps -p "$pid" -o lstart= 2>/dev/null | sed -E 's/^[A-Za-z]+ +//')"
     [ -n "$start" ] && printf '󰄉\t%s\tsince %s\n' "$FG_DIM" "$start"
     printf '󰆍\t%s\tcaffeinate -i  ·  pid %s\n' "$FG_DIM" "$pid"
-    printf '󰐎\t%s\tClick to let it sleep again\n' "$FG_DIM"
+    printf '󰐎\t%s\tLet it sleep again\t%s\n' "$FG_DIM" "$CONFIG_DIR/plugins/caffeine_click.sh"
   else
     printf '󰾪\t%s\tNormal sleep behaviour\n' "$FG_DIM"
-    printf '󰅶\t%s\tClick to keep this Mac awake\n' "$FG_DIM"
+    printf '󰅶\t%s\tKeep this Mac awake\t%s\n' "$FG_DIM" "$CONFIG_DIR/plugins/caffeine_click.sh"
   fi
 }
