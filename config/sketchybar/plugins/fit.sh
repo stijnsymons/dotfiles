@@ -34,8 +34,15 @@ fit_label() {
   local item="$1" text="$2" reserve="${3:-0}"
   local notch_l x avail chars
 
-  read -r _ notch_l _ _ <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
-  notch_l="${notch_l%.*}"
+  # FIT_NOTCH_L (env) short-circuits the metrics probe: check.sh injects it to
+  # exercise the truncation maths even when the bar sits on a notchless screen -
+  # which it does whenever an external display is plugged in.
+  if [ -n "${FIT_NOTCH_L:-}" ]; then
+    notch_l="$FIT_NOTCH_L"
+  else
+    read -r _ notch_l _ _ <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
+    notch_l="${notch_l%.*}"
+  fi
   x="$(sketchybar --query "$item" 2>/dev/null \
        | jq -r '.bounding_rects|to_entries[0].value.origin[0] // empty')"
   x="${x%.*}"

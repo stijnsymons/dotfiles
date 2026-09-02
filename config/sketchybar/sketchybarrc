@@ -12,8 +12,8 @@ source "$CONFIG_DIR/colors.sh"
 # Compile bin/*.swift if missing or stale (no-op once built).
 "$CONFIG_DIR/bin/build.sh"
 
-read -r BAR_HEIGHT NOTCH_L NOTCH_R SCREEN_W <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
-: "${BAR_HEIGHT:=38}" "${NOTCH_L:=0}" "${NOTCH_R:=0}" "${SCREEN_W:=0}"
+read -r BAR_HEIGHT NOTCH_L NOTCH_R SCREEN_W SCREEN_UUID <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
+: "${BAR_HEIGHT:=38}" "${NOTCH_L:=0}" "${NOTCH_R:=0}" "${SCREEN_W:=0}" "${SCREEN_UUID:=-}"
 # :=38 does not catch a literal 0, which is what screen-metrics reports on an
 # external primary with the menu bar auto-hidden - a zero-height, invisible bar
 # on reload. Same guard as plugins/display.sh.
@@ -78,14 +78,15 @@ NET_ROW=44            # one throughput row: icon + W_NET. Negative padding of
 # space for a third-party bar on its own. Note SketchyBar's own docs require
 # "Displays have separate Spaces" ON, which this machine has OFF.
 #
-# display=main draws the bar on the PRIMARY display only - the one macOS gives
-# the menu bar to. Make the external screen primary (System Settings ->
-# Displays -> Arrange, drag the white menu bar strip onto it) and the bar
-# follows it there, while the MacBook gets neither a menu bar nor a bar.
-# Undock and primary reverts to the built-in, so the bar comes back on its own.
-# No display index to maintain: "main" tracks whatever macOS considers primary.
+# The bar prefers the EXTERNAL display: screen-metrics picks it when one is
+# plugged in (built-in otherwise) and bar_display maps its UUID to the
+# arrangement id `display=` wants - no need to make that screen the macOS
+# primary, the menu bar can stay on the MacBook. plugins/display.sh redoes this
+# on every display_change, so docking moves the bar out and undocking brings it
+# home. When the lookup fails this degrades to display=main, the old behaviour:
+# the primary display, whichever screen macOS gives the menu bar to.
 sketchybar --bar height="$BAR_HEIGHT" \
-                 display=main \
+                 display="$(bar_display "$SCREEN_UUID")" \
                  position=top \
                  y_offset=0 \
                  margin=0 \
