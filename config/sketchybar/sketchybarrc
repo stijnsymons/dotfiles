@@ -242,6 +242,41 @@ sketchybar --add item front_app left \
                            script="$PLUGIN_DIR/front_app.sh" \
            --subscribe front_app front_app_switched
 
+# Herdr flock: the agents the herdr session is running, one coloured digit per
+# state (plugins/herdr.sh renders, cards/herdr.sh details, click toggles the
+# card). Sits between front_app and meeting on purpose: meeting and productive
+# fit themselves every tick against whatever x this cluster pushes them to, so
+# the space comes out of their labels, not out of anything fixed-width.
+herdr_args=(--add item sep.herdr left
+            --set sep.herdr "${separator[@]}" drawing=off
+            --add item herdr left
+            --set herdr drawing=off
+                        icon="$(printf '\363\260\263\206')"
+                        icon.color="$FG_DIM"
+                        icon.padding_right=2
+                        label.drawing=off
+                        update_freq=5
+                        script="$PLUGIN_DIR/herdr.sh"
+                        click_script="$PLUGIN_DIR/card.sh herdr toggle")
+for st in blocked working 'done' idle unknown; do
+  herdr_args+=(--add item "herdr.$st" left
+               --set "herdr.$st" drawing=off
+                                 icon.drawing=off
+                                 label.font="$FONT_TEXT:Bold:$SZ_LABEL"
+                                 label.padding_left=2
+                                 label.padding_right=3
+                                 click_script="$PLUGIN_DIR/card.sh herdr toggle")
+done
+sketchybar "${herdr_args[@]}" --set herdr "${card_popup[@]}"
+# herdr_flock fires on every cluster show/hide (plugins/herdr.sh) so meeting
+# and productive re-fit immediately instead of on their next 60s tick. The
+# visibility memory must not survive a reload: initial paint races the cluster
+# into place after meeting/productive have already fit, and a stale "on" would
+# swallow the poke that repairs exactly that.
+rm -f "$SB_CACHE_DIR/herdr.visible" "$SB_CACHE_DIR/herdr.edge"
+sketchybar --add event herdr_flock \
+           --subscribe herdr system_woke mouse.exited.global
+
 sketchybar --add item sep.now left --set sep.now "${separator[@]}"
 
 # Current meeting (hides itself when nothing is running).
@@ -264,7 +299,7 @@ sketchybar --add item meeting left \
                          click_script="$PLUGIN_DIR/card.sh meeting toggle" \
                          script="$PLUGIN_DIR/meeting.sh" \
            --set meeting "${card_popup[@]}" \
-           --subscribe meeting system_woke mouse.exited.global
+           --subscribe meeting system_woke herdr_flock mouse.exited.global
 
 # Divider between the two "right now" items. meeting.sh hides this alongside
 # itself on the failed-fetch path, so a hidden meeting never leaves a rule
@@ -280,7 +315,7 @@ sketchybar --add item productive left \
                             label.font="$FONT_TEXT:Regular:13.0" \
                             script="$PLUGIN_DIR/productive.sh" \
                             click_script="$PLUGIN_DIR/card.sh productive toggle" \
-           --subscribe productive system_woke
+           --subscribe productive system_woke herdr_flock
 
 sketchybar --set productive "${card_popup[@]}" \
            --subscribe productive mouse.exited.global

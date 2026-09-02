@@ -68,7 +68,7 @@ card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 # sketchybarrc pre-creates the rows, card.sh closes the others when one opens
 # and check.sh asserts both - naming the set once is what stops those three
 # from drifting apart.
-export CARD_ITEMS="meeting productive media cpu wifi caffeine"
+export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr"
 export CARD_ROWS=8
 
 # Hover dispatch for a card owner. Every one of them runs on an update_freq, so

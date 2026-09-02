@@ -482,6 +482,31 @@ FHIDDEN="$(fit_label definitely_not_an_item "$FLONG")"
 [ "${#FHIDDEN}" -lt 300 ] && ok "fit_label truncates without a laid-out item (${#FHIDDEN} chars)" \
                           || bad "fit_label passed 300 chars through for an unlaid-out item"
 
+echo "herdr:"
+# Byte-level glyph check, like power and caffeine: a dropped plane-15 glyph
+# renders as a blank box with no other symptom.
+HWANT="$(printf '\363\260\263\206' | xxd -p)"
+HGOT="$(sketchybar --query herdr 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
+is "sheep glyph U+F0CC6 bytes" "$HGOT" "$HWANT"
+# Fixture-driven, so the parse is tested no matter what herdr is doing live:
+# one blocked, two working, one idle - and zero done, which must hide its digit.
+HFIX='{"result":{"agents":[
+  {"pane_id":"w1:p1","agent_status":"blocked","terminal_title_stripped":"fix the tests","cwd":"/a/blocked-dir"},
+  {"pane_id":"w2:p1","agent_status":"working","terminal_title_stripped":"build things","cwd":"/a/build-dir"},
+  {"pane_id":"w3:p1","agent_status":"working","terminal_title_stripped":"write docs","cwd":"/a/docs-dir"},
+  {"pane_id":"w4:p1","agent_status":"idle","terminal_title_stripped":"waiting","cwd":"/a/idle-dir"}]}}'
+HROWS="$(set +u; export HERDR_AGENT_JSON="$HFIX"; source "$CONFIG_DIR/cards/herdr.sh"; card_rows)"
+is "card lists every agent"  "$(printf '%s' "$HROWS" | grep -c .)" 4
+is "blocked agent sorts first" "$(printf '%s' "$HROWS" | head -1 | cut -f3)" "fix the tests  ·  blocked-dir"
+is "every row focuses its pane" \
+   "$(printf '%s' "$HROWS" | awk -F'\t' '$4 !~ /^herdr agent focus w[0-9]+:p[0-9]+$/{bad=1} END{print bad+0}')" 0
+HERDR_AGENT_JSON="$HFIX" "$CONFIG_DIR/plugins/herdr.sh"
+is "blocked digit" "$(sketchybar --query herdr.blocked 2>/dev/null | jq -r '.label.value')" "1"
+is "working digit" "$(sketchybar --query herdr.working 2>/dev/null | jq -r '.label.value')" "2"
+is "zero-count digit hides" "$(sketchybar --query herdr.done 2>/dev/null | jq -r '.geometry.drawing')" "off"
+is "sheep wears the urgent colour" "$(sketchybar --query herdr 2>/dev/null | jq -r '.icon.color')" "$RED"
+"$CONFIG_DIR/plugins/herdr.sh"   # re-render from the live socket
+
 echo "deps:"
 # timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its
 # hang watchdog without it, and gws is the calendar itself - a missing one

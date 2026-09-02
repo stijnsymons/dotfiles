@@ -52,7 +52,9 @@ Restart with `brew services restart sketchybar` after granting.
 
 ## Layout
 
-**Left** —  power menu · focused app
+**Left** —  power menu · focused app · herdr flock (agent count per state:
+red blocked / blue working / green done / dim idle; click for the card, a row
+click focuses that agent) · current meeting · productive timer
 **Right** — now playing · CPU / memory · network (stacked ↑/↓) + Wi-Fi ·
 Bluetooth / volume / battery · mic-in-use · clock
 
