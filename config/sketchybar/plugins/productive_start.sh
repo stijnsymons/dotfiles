@@ -25,6 +25,15 @@ log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG"; }
 SERVICE="${1:-}"
 [ -n "$SERVICE" ] || { log "no service id given"; exit 1; }
 
+# The CLI reads PRODUCTIVE_API_TOKEN from the ENVIRONMENT - it does no lifting
+# of its own. productive_api() lifts the creds itself, but the two CLI calls
+# below run before it, and this script is spawned from a card click, not from
+# productive.sh, so it inherits nothing. Without the lift the bar's login-less
+# environment makes both CLI calls exit non-zero with an empty stdout, which
+# reads here as "nothing is timing" and then as "the entry could not be
+# created" - the empty-bodied failures in the log.
+productive_creds || { log "no Productive credentials available"; exit 1; }
+
 # --- refuse if something is already timing -----------------------------------
 # Productive allows one timer per person and offers NO way to stop one through
 # the API: /timers supports GET and POST only - PATCH, PUT, DELETE and

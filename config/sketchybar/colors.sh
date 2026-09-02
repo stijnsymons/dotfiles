@@ -22,16 +22,31 @@ export ORANGE=0xffff9e64          # orange
 export PINK=0xffbb9af7            # magenta
 export RED=0xfff7768e             # red
 
-# PATH. launchd starts sketchybar from a login-less context - PATH is
-# /usr/bin:/bin and little else - so gws-now (~/bin), the Productive CLI
-# (~/code/assistant/bin) and jq (the brew prefix) are all unreachable and every
-# plugin that shells out silently finds nothing. Repaired here, once, for
-# everything that sources this file. The brew prefix doubles as the sentinel: a
-# PATH that already has it came from a login shell and is left alone.
-case ":$PATH:" in
-  *:/opt/homebrew/bin:*) ;;
-  *) export PATH="$HOME/bin:$HOME/code/assistant/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" ;;
-esac
+# PATH. launchd starts sketchybar from a login-less context, so gws-now
+# (~/bin), the Productive CLI (~/code/assistant/bin) and jq (the brew prefix)
+# can all be unreachable and every plugin that shells out silently finds
+# nothing. Repaired here, once, for everything that sources this file.
+#
+# Each directory is tested for on its own. The brew prefix was the sentinel for
+# the whole repair - "a PATH that already has it came from a login shell" - but
+# Homebrew's own launchd plist hands the bar
+# /opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin, which
+# satisfies the sentinel without ever having seen a login shell. The repair was
+# then skipped whole, ~/code/assistant/bin stayed off PATH, `productive` was
+# not found, and the timer item fell back to its cache and then to "--".
+#
+# Testing per directory is also what keeps this idempotent: productive.sh
+# sources this file and then runs productive_plan.sh, which sources it again in
+# a child, so an unconditional prepend would grow PATH on every nesting.
+# Prepended in reverse so the listed order is the resulting precedence.
+for _sb_dir in /usr/local/bin /opt/homebrew/bin "$HOME/code/assistant/bin" "$HOME/bin"; do
+  case ":$PATH:" in
+    *":$_sb_dir:"*) ;;
+    *) PATH="$_sb_dir:$PATH" ;;
+  esac
+done
+unset _sb_dir
+export PATH
 
 # Cache. Everything the bar keeps on disk lands here - calendar bodies, join
 # links with their passcodes, timesheet rows - so it is ours alone rather than
