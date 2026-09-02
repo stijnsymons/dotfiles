@@ -308,7 +308,13 @@ for c in $CARD_ITEMS; do
   CW="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"; card_rows 2>/dev/null | grep -c . )"
   [ "${CN:-0}" -ge "${CW:-0}" ] && ok "$c: $CN rows for $CW needed" \
                                 || bad "$c: only $CN rows for $CW content lines - card truncated"
+  # card.sh addresses rows up to this card's own budget, both to fill and to
+  # hide leftovers, so anything it can address has to exist on the bar.
+  CB="$(card_rows_max "$c")"
+  [ "${CN:-0}" -ge "$CB" ] && ok "$c: budget of $CB rows pre-created" \
+                           || bad "$c: budget is $CB but only $CN rows exist"
 done
+is "an unknown card falls back to the default budget" "$(card_rows_max not_a_card)" "$CARD_ROWS"
 
 # Open/close and the watchdog, exercised on one card (the engine is shared).
 "$CONFIG_DIR/plugins/card.sh" wifi open >/dev/null 2>&1
@@ -435,7 +441,8 @@ echo "card row actions:"
 "$CONFIG_DIR/plugins/card.sh" meeting open >/dev/null 2>&1
 CMISS=0
 CI=1
-while [ "$CI" -le "$CARD_ROWS" ]; do
+CMAX="$(card_rows_max meeting)"
+while [ "$CI" -le "$CMAX" ]; do
   CQ="$(sketchybar --query "meeting.pop.$CI" 2>/dev/null)"
   CI=$(( CI + 1 ))
   [ "$(printf '%s' "$CQ" | jq -r '.geometry.drawing')" = "on" ] || continue
@@ -489,6 +496,25 @@ CP_OTHER="$(printf '%s\n' "$CPROD" | grep -cv 'brave_tab.sh 3\|productive_start.
 [ "$CP_TAB" -ge 1 ] && [ "$CP_OTHER" -eq 0 ] \
   && ok "productive rows -> tab 3 ($CP_TAB) or start-timer ($CP_START)" \
   || bad "productive rows disagree: $CPROD"
+
+# The plan is the TAIL of this card, so it is what a too-small budget eats:
+# five detail rows go out first and the planning rows take the remainder.
+# Fixture-driven with a fuller week than the live cache holds, because the real
+# one is only as long as this week happens to be.
+PT="$(mktemp -d)"
+printf '%s' '{"running":true,"project":"aaaa-0001","budget":"Budget","service":"Svc",
+  "elapsed":"1h 02m","started_at":"2026-09-01T09:12:00+02:00","note":"a note"}' > "$PT/timer.json"
+jq -nc '[range(10) | {project:"proj-\(.)", project_id:"\(.)",
+                      service_id:"\(1000+.)", service:"Senior Architect"}]' > "$PT/plan.json"
+# shellcheck source=/dev/null
+PROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/productive.sh"
+          export PRODUCTIVE_CACHE="$PT/timer.json" PRODUCTIVE_PLAN_CACHE="$PT/plan.json"
+          card_rows 2>/dev/null | grep -c . )"
+is "productive emits 5 detail rows plus every planned project" "$PROWS" "15"
+[ "$PROWS" -le "$(card_rows_max productive)" ] \
+  && ok "productive fits its budget of $(card_rows_max productive) rows" \
+  || bad "productive needs $PROWS rows but its budget is $(card_rows_max productive)"
+rm -rf "$PT"
 
 # Media: exactly one actionable row, and it is the transport control at the end.
 # With no session at all (fresh boot, nothing ever played) the card correctly

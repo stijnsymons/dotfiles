@@ -148,7 +148,8 @@ separator=(
 # plugins/card.sh owns the dwell delay, cancellation and the stuck-card
 # watchdog; cards/<item>.sh supplies the rows. Rows are pre-created and hidden
 # because building them on hover flashes an empty card while sketchybar lays
-# them out. Eight rows each - the cpu card is the longest at seven.
+# them out. Eight each by default; card_rows_max in colors.sh raises the cards
+# whose tail is a list rather than a fixed set of details.
 card_popup=(
   popup.background.color="$POPUP_BG"
   popup.background.corner_radius=6
@@ -167,7 +168,9 @@ card_popup=(
 card_rows_for() { # card_rows_for <item>
   local i=1
   local args=()
-  while [ "$i" -le "$CARD_ROWS" ]; do
+  local max
+  max="$(card_rows_max "$1")"
+  while [ "$i" -le "$max" ]; do
     args+=(--add item "$1.pop.$i" "popup.$1"
            --set "$1.pop.$i" drawing=off
                              label.align=left

@@ -63,16 +63,18 @@ card_rows() {
 # coloured by the same tier the bar item uses, so the card and the item agree,
 # and each opens that event in the pinned calendar tab.
 #
-# The card has CARD_ROWS rows total (colors.sh). Detail takes what it
-# needs first and upcoming fills whatever is left, so a meeting with a long
-# description simply shows fewer of them rather than pushing detail off.
+# The card has as many rows as its budget allows (card_rows_max, colors.sh).
+# Detail takes what it needs first and upcoming fills whatever is left, so a
+# meeting with a long description simply shows fewer of them rather than
+# pushing detail off.
 meeting_upcoming_rows() {
   local up ev tz start summary tier color
   up="${MEETING_UPCOMING:-$SB_CACHE_DIR/meetings.json}"
   [ -s "$up" ] || return 0
 
-  # No row budgeting here: card.sh stops at CARD_ROWS on its own, so detail
-  # rows are emitted first and take what they need, and these fill the rest.
+  # No row budgeting here: card.sh stops at this card's budget on its own,
+  # so detail rows are emitted first and take what they need, and these fill
+  # the rest.
   #
   # One jq pass for the whole list: the three per-event spawns that pulled
   # timeZone, _s and summary are now three fields of the line the loop already

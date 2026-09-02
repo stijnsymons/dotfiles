@@ -108,6 +108,23 @@ export CARD_ROWS=8
 # outright, which is out of all proportion to dismissing a popup.
 export CARD_AWAY_EVENTS="front_app_switched space_change display_change system_woke"
 
+# The budget is per card, because one number for all of them is a number that
+# fits the shortest. The productive card spends its first five rows on the
+# running timer - project, budget, elapsed, started, note - and only then lists
+# this week's planning, so a shared eight left the plan three rows and dropped
+# the rest with no symptom. Sixteen keeps those five and still has room for
+# eleven projects, against the 1-4 a week bookings have actually run this
+# quarter; the spare rows are created hidden in the same batched call, so one
+# that is never filled costs nothing but its existence.
+#
+# A case, not an associative array: launchd hands this config bash 3.2.
+card_rows_max() { # card_rows_max <item>
+  case "$1" in
+    productive) printf '16\n' ;;
+    *)          printf '%s\n' "$CARD_ROWS" ;;
+  esac
+}
+
 # Hover dispatch for a card owner. Every one of them runs on an update_freq, so
 # routing the routine tick through here arms the stuck-card watchdog for all
 # six rather than for the one item that happened to call card.sh by hand.

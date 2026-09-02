@@ -105,7 +105,7 @@ done
 # shellcheck source=/dev/null
 source "$CONFIG_DIR/cards/$ITEM.sh"
 N=1
-MAX="${CARD_ROWS:-8}"   # sketchybarrc pre-created exactly this many rows
+MAX="$(card_rows_max "$ITEM")"   # sketchybarrc pre-created exactly this many rows
 
 TAB_CH=$'\t'
 # Rows are collected and sent as one call, together with the popup.drawing=on
