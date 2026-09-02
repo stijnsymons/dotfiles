@@ -859,6 +859,42 @@ case "$STALE_CPU" in
 esac
 rm -rf "$STALE_DIR"
 
+echo "popups fit the screen:"
+# A popup grows from its owner in the direction of popup.align, and nothing
+# stops it leaving the display. The clock found this the hard way: rightmost
+# item, card_popup's align=left, and the widest row ran 72pt past a 1728pt
+# screen - the hours figure simply was not there. Cheap to assert, invisible
+# otherwise, and it has to be measured per card because it depends on the
+# owner's x, the align, and the widest row's text.
+read -r _ _ _ PS_W <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
+PS_W="${PS_W%.*}"
+case "${PS_W:-0}" in
+  ''|*[!0-9]*|0) ok "screen width unreadable, skipping popup fit" ;;
+  *)
+    for c in $CARD_ITEMS; do
+      "$CONFIG_DIR/plugins/card.sh" "$c" open >/dev/null 2>&1
+      PS_MAX=0; PS_MIN=999999
+      PS_N=1
+      while [ "$PS_N" -le "$(card_rows_max "$c" 2>/dev/null || echo "${CARD_ROWS:-8}")" ]; do
+        read -r PS_L PS_R <<<"$(sketchybar --query "$c.pop.$PS_N" 2>/dev/null \
+          | jq -r '.bounding_rects|to_entries[0].value|select(.origin[0] > -9000)|"\(.origin[0]|floor) \((.origin[0]+.size[0])|floor)"')"
+        case "${PS_R:-}" in ''|*[!0-9-]*) : ;; *)
+          [ "$PS_R" -gt "$PS_MAX" ] && PS_MAX="$PS_R"
+          [ "$PS_L" -lt "$PS_MIN" ] && PS_MIN="$PS_L" ;;
+        esac
+        PS_N=$(( PS_N + 1 ))
+      done
+      "$CONFIG_DIR/plugins/card.sh" "$c" close >/dev/null 2>&1
+      if [ "$PS_MAX" -eq 0 ]; then
+        ok "$c: card empty, nothing to fit"
+      elif [ "$PS_MAX" -le "$PS_W" ] && [ "$PS_MIN" -ge 0 ]; then
+        ok "$c: card spans $PS_MIN..$PS_MAX inside ${PS_W}pt"
+      else
+        bad "$c: card spans $PS_MIN..$PS_MAX, outside the ${PS_W}pt screen"
+      fi
+    done ;;
+esac
+
 echo "deps:"
 # timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its
 # hang watchdog without it, and gws is the calendar itself - a missing one

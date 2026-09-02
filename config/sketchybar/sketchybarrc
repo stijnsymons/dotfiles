@@ -352,7 +352,14 @@ sketchybar --add item clock right \
                        click_script="$PLUGIN_DIR/card.sh clock toggle" \
                        script="$PLUGIN_DIR/clock.sh"
 
-sketchybar --set clock "${card_popup[@]}" \
+# popup.align=right overrides card_popup's left, and only here: clock is the
+# RIGHTMOST item, so a left-aligned popup grows off the screen. Measured at
+# 1728pt wide - the widest row ran to x=1800, losing 72pt of "13h / 34h logged
+# this week" past the edge. Aligning right anchors the popup's right edge to
+# the item's and it grows inwards (1473..1709, clear). The other three
+# right-side cards do not need this: media, cpu, wifi and caffeine all sit far
+# enough left that even their widest rows land inside the screen.
+sketchybar --set clock "${card_popup[@]}" popup.align=right \
            --subscribe clock mouse.exited.global
 
 sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
