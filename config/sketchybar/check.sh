@@ -76,22 +76,9 @@ for a in toggle close about settings appstore force lock sleep logout restart sh
 done
 
 echo "layout vs notch:"
-read -r M_TOP M_NL M_NR _ M_UUID <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
+read -r M_TOP M_NL M_NR _ <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
 BAR_H="$(sketchybar --query bar 2>/dev/null | jq -r '.height')"
-# A screen that reserves nothing (an external) reports 0; the shell defaults
-# to 38 there - mirror that, or this fails whenever the bar sits on the external.
-[ "${M_TOP:-0}" -gt 0 ] 2>/dev/null || M_TOP=38
 is "bar height matches reserved top inset" "$BAR_H" "$M_TOP"
-
-echo "bar display selection:"
-nonempty "metrics report a display uuid" "${M_UUID:-}"
-is "unknown uuid falls back to main" "$(bar_display no-such-uuid)" main
-BD="$(bar_display "${M_UUID:-}")"
-case "$BD" in
-  [0-9]*) ok "uuid -> arrangement id $BD" ;;
-  main)   bad "uuid '$M_UUID' not found in --query displays (fell back to main)" ;;
-  *)      bad "bar_display returned '$BD'" ;;
-esac
 if [ "${M_NR:-0}" = "0" ]; then
   ok "no notch on this display, skipping clearance"
 else
@@ -315,10 +302,6 @@ for c in $CARD_ITEMS; do
   CN="$(sketchybar --query bar 2>/dev/null | jq -r --arg p "$c.pop." '[.items[]|select(startswith($p))]|length')"
   # shellcheck source=/dev/null
   CW="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/$c.sh"; card_rows 2>/dev/null | grep -c . )"
-  # card.sh stops at CARD_ROWS by design (a busy calendar shows fewer upcoming
-  # rows, it does not grow the card), so live content beyond that is not a
-  # truncation bug - cap the expectation at the budget.
-  [ "${CW:-0}" -gt "$CARD_ROWS" ] && CW=$CARD_ROWS
   [ "${CN:-0}" -ge "${CW:-0}" ] && ok "$c: $CN rows for $CW needed" \
                                 || bad "$c: only $CN rows for $CW content lines - card truncated"
 done
@@ -480,10 +463,6 @@ for it in meeting productive; do
 done
 
 source "$CONFIG_DIR/plugins/fit.sh"
-# Inject the notch bound: on the external screen (which the bar prefers when
-# docked) there is no notch and fit_label correctly passes text through - the
-# maths under test would never run. 600 is a typical notch_l.
-export FIT_NOTCH_L=600
 FLONG="$(printf 'x%.0s' $(seq 1 300))"
 FFIT="$(fit_label productive "$FLONG")"
 case "$FFIT" in
@@ -499,7 +478,6 @@ is "fit_label leaves short text alone" "$FSHORT" "ok"
 FHIDDEN="$(fit_label definitely_not_an_item "$FLONG")"
 [ "${#FHIDDEN}" -lt 300 ] && ok "fit_label truncates without a laid-out item (${#FHIDDEN} chars)" \
                           || bad "fit_label passed 300 chars through for an unlaid-out item"
-unset FIT_NOTCH_L
 
 echo "deps:"
 # timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its

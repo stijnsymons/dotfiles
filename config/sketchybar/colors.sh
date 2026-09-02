@@ -49,22 +49,6 @@ export SB_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
 # rest of that text into the action field. Strip the separators at the source.
 card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 
-# Map a display UUID (fifth field of bin/screen-metrics) to the arrangement id
-# sketchybar wants in `--bar display=`. screen-metrics picks the external
-# screen when one is plugged in, so this is what pins the bar there without
-# making that screen the macOS primary. Falls back to "main" - the old
-# behaviour - when the lookup fails, so a bad query never strands the bar on a
-# display that no longer exists.
-bar_display() {
-  local aid
-  aid="$(sketchybar --query displays 2>/dev/null \
-         | jq -r --arg u "${1:-}" '.[] | select(.UUID == $u) | ."arrangement-id"' 2>/dev/null)"
-  case "$aid" in
-    ''|*[!0-9]*) printf 'main' ;;
-    *)           printf '%s' "$aid" ;;
-  esac
-}
-
 # The items that own a hover card, and how many rows each one has room for.
 # sketchybarrc pre-creates the rows, card.sh closes the others when one opens
 # and check.sh asserts both - naming the set once is what stops those three
