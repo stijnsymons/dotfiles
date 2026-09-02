@@ -507,6 +507,90 @@ else
                    *) bad "last media row is not the transport control (got '$CLAST')" ;; esac
 fi
 
+echo "media card artwork:"
+# The cover is the popup's background image, which sketchybar draws flush left
+# and full-height behind the rows. So its square has to equal the popup's
+# height, and the popup is exactly as tall as the rows the card emits - two
+# facts kept in step by hand in media_lib.sh. Nothing in the drawing path can
+# notice them drifting apart; a clipped cover is the only symptom.
+MPOPH="$(sketchybar --query media 2>/dev/null | jq -r '.popup.height')"
+# A 1x1 PNG - the smallest thing that is genuinely an image, so the extract is
+# exercised on real bytes rather than on a mock, and on the PNG that plenty of
+# players publish rather than only on the JPEG that Music does.
+ART_FIX="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/wcAAwAB/8lJIVEAAAAASUVORK5CYII="
+MART="$( set +u
+  source "$CONFIG_DIR/colors.sh"
+  source "$CONFIG_DIR/plugins/media_lib.sh"
+  # Never the live path: the assertions below overwrite it and then delete it,
+  # and the bar is drawing the current track from it right now.
+  ART_JPG="$SB_CACHE_DIR/check-media-art.jpg"
+  echo "row_h=$ART_ROW_H"
+  echo "px=$ART_PX"
+  echo "has_empty=$(art_has ""     && echo yes || echo no)"
+  echo "has_null=$( art_has "null" && echo yes || echo no)"
+  echo "has_real=$( art_has "x"    && echo yes || echo no)"
+  echo "rows_bare=$(  art_rows ""  "")"
+  echo "rows_artist=$(art_rows "a" "null")"
+  echo "rows_both=$(  art_rows "a" "b")"
+
+  art_extract "$ART_FIX"; echo "fix_exit=$?"
+  echo "fix_type=$(file -b "$ART_JPG" 2>/dev/null | awk '{print $1}')"
+  echo "fix_dims=$(sips -g pixelWidth "$ART_JPG" 2>/dev/null | awk '/pixelWidth/{print $2}')x$(sips -g pixelHeight "$ART_JPG" 2>/dev/null | awk '/pixelHeight/{print $2}')"
+
+  # A track with no cover at all, straight after one that had it: the file the
+  # popup would still be pointing at has to be gone, not merely unassigned.
+  art_extract "null"; echo "null_exit=$?"
+  [ -f "$ART_JPG" ] && echo "null_gone=no" || echo "null_gone=yes"
+
+  # base64 --decode turns "null" into three bytes of junk without complaint, so
+  # bytes that are not an image are their own case, and must not survive either.
+  art_extract "$ART_FIX" >/dev/null 2>&1
+  art_extract "$(printf 'notanimage' | base64)"; echo "junk_exit=$?"
+  [ -f "$ART_JPG" ] && echo "junk_gone=no" || echo "junk_gone=yes"
+  rm -f "$ART_JPG" "$ART_JPG.new"
+
+  # sips exits 0 for an input it never managed to read and writes nothing, so a
+  # cover that failed to land has to report failure anyway - the alternative is
+  # a popup left pointed at a file that is not there, which draws the last one.
+  ( ART_JPG="/nonexistent/media-art.jpg"; art_extract "$ART_FIX" ) >/dev/null 2>&1
+  echo "unwritable_exit=$?"
+
+  # The mirror: what the card really prints, against what the cover was cut for.
+  raw="$(nowplaying-cli get title artist album 2>/dev/null)"
+  { IFS= read -r t; IFS= read -r ar; IFS= read -r al; } <<ARTEOF
+$raw
+ARTEOF
+  if art_has "$t"; then
+    source "$CONFIG_DIR/cards/media.sh"
+    n="$(card_rows 2>/dev/null | grep -c .)"
+    want="$(art_rows "$ar" "$al")"
+    [ "$n" = "$want" ] && echo "mirror=yes" || echo "mirror=no"
+    echo "mirror_detail=card $n vs art_rows $want"
+  else
+    echo "mirror=skip"
+  fi )"
+mart() { printf '%s\n' "$MART" | awk -F= -v k="$1" '$1==k{print $2}'; }
+is "cover square tracks popup row height" "$(mart row_h)" "$MPOPH"
+is "art_has rejects empty"        "$(mart has_empty)" "no"
+is "art_has rejects null"         "$(mart has_null)"  "no"
+is "art_has accepts a value"      "$(mart has_real)"  "yes"
+is "bare track is title+transport" "$(mart rows_bare)"   "2"
+is "artist adds a row"             "$(mart rows_artist)" "3"
+is "artist and album add two"      "$(mart rows_both)"   "4"
+is "fixture extracts"             "$(mart fix_exit)" "0"
+is "fixture stored as JPEG"       "$(mart fix_type)" "JPEG"
+is "fixture fills the square"     "$(mart fix_dims)" "$(mart px)x$(mart px)"
+is "no cover -> nonzero"          "$(mart null_exit)" "1"
+is "no cover -> no stale file"    "$(mart null_gone)" "yes"
+is "non-image bytes -> nonzero"   "$(mart junk_exit)" "1"
+is "non-image bytes -> no stale file" "$(mart junk_gone)" "yes"
+is "cover that cannot be written -> nonzero" "$(mart unwritable_exit)" "1"
+case "$(mart mirror)" in
+  yes)  ok "card rows match the square the cover is cut to" ;;
+  skip) ok "row mirror: no session" ;;
+  *)    bad "card rows and art_rows disagree ($(mart mirror_detail))" ;;
+esac
+
 echo "untrusted text:"
 # Row text is free text from calendars, Productive, nowplaying and SSIDs, and
 # the row separator is a tab - so a tab inside one shifts everything after it
