@@ -287,10 +287,12 @@ sketchybar --set productive "${card_popup[@]}" \
 
 ##### Right side, added right-to-left #####
 
-# Clock (rightmost)
+# Clock (rightmost). padding_right keeps the last digit clear of the macOS
+# recording indicator, which macOS paints over the corner of the screen.
 sketchybar --add item clock right \
            --set clock icon=󰥔 \
                        icon.color="$VIOLET" \
+                       padding_right=10 \
                        update_freq=15 \
                        click_script="open -a Calendar" \
                        script="$PLUGIN_DIR/clock.sh"
