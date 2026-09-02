@@ -242,6 +242,7 @@ CWANT="$(printf '\363\260\205\266' | xxd -p)"
 CGOT="$(sketchybar --query caffeine 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
 is "coffee glyph U+F0176 bytes" "$CGOT" "$CWANT"
 CAFFEINE_LIB=1 source "$CONFIG_DIR/plugins/caffeine.sh"
+# shellcheck disable=SC2034  # read by caffeine_pid(), sourced above
 CSF="$(mktemp)"; CAFFEINE_STATE_FILE="$CSF"
 echo 1 > "$CSF"        # alive, but launchd -- i.e. a recycled PID
 caffeine_pid >/dev/null && bad "recycled PID reads as running" || ok "recycled PID reads as off"
@@ -264,9 +265,11 @@ case "$PG" in
   "$PW") ok "warning glyph U+F071 (not timing)" ;;
   *)     bad "unexpected productive glyph bytes: $PG" ;;
 esac
-# A transparent colour means colors.sh was not sourced -- the icon renders invisible.
+# A transparent colour means colors.sh was not sourced -- the icon renders
+# invisible. The full set is timer_color's tiers (blue client / green internal /
+# violet mx-trai) plus red idle and the dim stale state.
 PICO="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.color')"
-case "$PICO" in "$RED"|"$GREEN"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
+case "$PICO" in "$RED"|"$GREEN"|"$BLUE"|"$VIOLET"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
                 *) bad "icon colour not from palette (got '$PICO')" ;; esac
 
 echo "launchd PATH:"
