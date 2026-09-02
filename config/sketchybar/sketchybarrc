@@ -12,6 +12,22 @@ source "$CONFIG_DIR/colors.sh"
 # Compile bin/*.swift if missing or stale (no-op once built).
 "$CONFIG_DIR/bin/build.sh"
 
+##### Helper #####
+# bin/sb-helper renders cpu, mem, net_up, net_down, mic, volume and the herdr
+# cluster from one long-lived process: sketchybar forks a script per item per
+# tick, and the fork was the cost - those six items burned ~4.2s of process
+# time a minute between them, against ~0.004ms per update over the bar's own
+# mach port. It also owns the stuck-card watchdog that each of those ticks used
+# to drive, and it turns mic and volume from polls into CoreAudio listeners.
+#
+# The bootstrap name is how the volume item routes its events back: an item
+# with mach_helper=<name> has its events delivered to that port instead of
+# forking a script, which is what makes a scroll instant instead of a ~107ms
+# wait on osascript. The helper sets that property on itself once it has
+# actually claimed the name, so nothing here has to guess at the ordering.
+# Started at the END of this file, once every item it paints exists.
+SB_HELPER_NAME="git.felix.sbhelper"
+
 read -r BAR_HEIGHT NOTCH_L NOTCH_R SCREEN_W <<<"$("$CONFIG_DIR/bin/screen-metrics" 2>/dev/null)"
 : "${BAR_HEIGHT:=38}" "${NOTCH_L:=0}" "${NOTCH_R:=0}" "${SCREEN_W:=0}"
 # :=38 does not catch a literal 0, which is what screen-metrics reports on an
@@ -255,7 +271,6 @@ herdr_args=(--add item sep.herdr left
                         icon.color="$FG_DIM"
                         icon.padding_right=2
                         label.drawing=off
-                        update_freq=5
                         script="$PLUGIN_DIR/herdr.sh"
                         click_script="$PLUGIN_DIR/card.sh herdr toggle")
 for st in blocked working 'done' idle unknown; do
@@ -334,12 +349,12 @@ sketchybar --add item clock right \
 
 sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
 
-# Mic in use (hidden unless something is capturing)
+# Mic in use (hidden unless something is capturing). No update_freq and no
+# script: bin/sb-helper renders this from a CoreAudio listener, so the state
+# arrives when it changes instead of being polled every 3s.
 sketchybar --add item mic right \
            --set mic drawing=off \
-                     update_freq=3 \
-                     click_script="open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'" \
-                     script="$PLUGIN_DIR/mic.sh"
+                     click_script="open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'"
 
 # Status: bluetooth | volume | battery
 sketchybar --add item battery right \
@@ -353,7 +368,6 @@ sketchybar --add item battery right \
            --set volume icon.color="$YELLOW" \
                         label.width="$W_PCT" \
                         label.align=left \
-                        script="$PLUGIN_DIR/volume.sh" \
            --subscribe volume volume_change mouse.clicked mouse.scrolled \
            --add item bluetooth right \
            --set bluetooth update_freq=60 \
@@ -410,9 +424,7 @@ sketchybar --add item net_up right \
                           label.align=left \
                           label.padding_right=4 \
                           y_offset=-6 \
-                          padding_right="-$NET_ROW" \
-                          update_freq=3 \
-                          script="$PLUGIN_DIR/network.sh"
+                          padding_right="-$NET_ROW"
 
 # wifi_change is what actually moves this item, and it fires the moment the
 # association changes. The poll is only a backstop for a missed event, so it
@@ -430,11 +442,17 @@ sketchybar --set wifi "${card_popup[@]}" \
 
 sketchybar --add item sep.net right --set sep.net "${separator[@]}"
 
-# System: cpu | mem (one script drives both items)
+# System: cpu | mem
 # cpu / mem stacked into one column, exactly as net_up / net_down below:
 # equal widths, opposite y_offset, and a negative padding_right on mem (the
-# left one) pulls it back on top of cpu. system.sh sets both items by name, so
-# the update_freq and script ride on the bottom row.
+# left one) pulls it back on top of cpu.
+#
+# bin/sb-helper paints both, so neither carries an update_freq. mem keeps
+# script=system.sh for its SUBSCRIPTIONS only - with no update_freq that script
+# runs on mouse.exited.global and nothing else, which is what still closes the
+# shared card. Its card_dispatch also used to drive the stuck-card watchdog on
+# every tick; the helper does that now, for all seven cards rather than the few
+# that happened to be polling.
 sketchybar --add item cpu right \
            --set cpu icon="󰻠" \
                      icon.color="$AQUA" \
@@ -462,7 +480,6 @@ sketchybar --add item cpu right \
                      label.padding_right=4 \
                      y_offset=-6 \
                      padding_right="-$SYS_ROW" \
-                     update_freq=10 \
                      click_script="$PLUGIN_DIR/card.sh cpu toggle" \
                      script="$PLUGIN_DIR/system.sh"
 
@@ -506,6 +523,34 @@ sketchybar --add item display_watch right \
 
 # Card rows are added last: every parent item must exist first.
 for c in $CARD_ITEMS; do card_rows_for "$c"; done
+
+##### Helper start #####
+# After every item exists, so the helper's opening paint lands on real items
+# rather than being dropped and leaving "--" until its first timer.
+#
+# The old instance is killed first: a reload re-runs this file, and two helpers
+# would both hold timers and fight over the same items - and the second would
+# fail to claim the bootstrap name (kr=1101), silently losing the volume
+# events. Matched with pkill -x on the process NAME, not -f on a path: this
+# config is reached through ~/.config/sketchybar, a symlink, so the path a
+# running helper reports is not the path this script would build.
+# Backgrounded and disowned - sketchybar waits on its config script, so a
+# foreground helper would hang the reload forever.
+if [ -x "$CONFIG_DIR/bin/sb-helper" ]; then
+  pkill -x sb-helper 2>/dev/null
+  "$CONFIG_DIR/bin/sb-helper" "$SB_HELPER_NAME" >/dev/null 2>&1 &
+  disown
+else
+  # No helper (toolchain missing, or a compile that failed - see
+  # ~/.cache/sketchybar/build-sb-helper.err). The items it owns would sit at
+  # "--" forever, so fall back to the shell plugins by restoring their timers.
+  printf 'sketchybar: bin/sb-helper missing, falling back to shell plugins\n' >&2
+  sketchybar --set mem      update_freq=10 script="$PLUGIN_DIR/system.sh" \
+             --set net_down update_freq=3  script="$PLUGIN_DIR/network.sh" \
+             --set mic      update_freq=3  script="$PLUGIN_DIR/mic.sh" \
+             --set volume   script="$PLUGIN_DIR/volume.sh" \
+             --set herdr    update_freq=5  script="$PLUGIN_DIR/herdr.sh"
+fi
 
 ##### First paint #####
 sketchybar --update

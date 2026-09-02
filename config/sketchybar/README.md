@@ -22,7 +22,7 @@ default (see [Notes](#notes--gotchas)):
 ```sh
 brew install sketchybar jq blueutil nowplaying-cli
 brew install --cask font-hack-nerd-font font-jetbrains-mono-nerd-font
-xcode-select --install    # swiftc, for the mic helper + display probe
+xcode-select --install    # swiftc + clang, for bin/sb-helper and the probes
 ```
 
 Both Nerd Fonts are required — without them **every icon renders as a blank
@@ -37,7 +37,52 @@ brew services start sketchybar
 ```
 
 `bin/build.sh` compiles the Swift helpers at startup if they are missing or
-stale, so there is no build step. Only the `.swift` sources are tracked.
+stale, so there is no build step. Only the sources are tracked.
+
+## bin/sb-helper
+
+Most items are shell plugins, which is the model SketchyBar hands you: it forks
+a script per item per tick. The fork is the cost — `bash` alone is ~11ms, each
+`jq` ~13ms, and every `sketchybar --set` is a ~4.9ms CLI round trip that packs
+argv, re-looks-up the mach port and waits for a reply. Six items were burning
+**~4.2s of process time per minute** between them.
+
+`bin/sb-helper` is one long-lived process that renders those six instead, over
+SketchyBar's own mach port at **~0.004ms per update** — a cached port, no argv
+packing, no reply awaited. It also replaces their data sources with frameworks:
+
+| Item | Was | Now |
+|---|---|---|
+| `cpu` | `ps -A` summed in awk | `host_statistics64` tick deltas |
+| `mem` | `memory_pressure` | unchanged, deliberately (see below) |
+| `net_up` / `net_down` | `netstat -ibn` | `getifaddrs` + `SCDynamicStore` |
+| `mic` | `bin/mic-active` every 3s | CoreAudio listener — **push, not poll** |
+| `volume` | 3 × `osascript` (~107ms each) | CoreAudio, and events over mach |
+| `herdr` + digits | `bash` + `jq` per tick | one `herdr agent list`, parsed natively |
+
+Two details worth knowing:
+
+- **`mem` still shells out to `memory_pressure`.** Every native page sum
+  disagrees with it wildly — 20% used versus 56% on this machine — so going
+  native would have silently redefined the item *and* invalidated the 60%/85%
+  colour thresholds. `--selftest` reports both numbers (`mem`, `mem_resident`)
+  so switching later is a threshold change, not an investigation.
+- **`volume` receives its events over mach.** An item with
+  `mach_helper=<bootstrap name>` has its events delivered to that port instead
+  of forking. The helper claims the name and then sets the property on itself,
+  so the ordering can never be wrong. This is what makes a scroll instant.
+
+`sb-shim.c` exists for one reason: `bootstrap_register` — the call that claims
+the name — is not merely deprecated but *unavailable* to Swift, a hard compile
+error. `bootstrap_look_up` is missing from Swift's `Darwin` module too, so
+`sb-shim.h` doubles as the bridging header.
+
+If the helper is missing or fails to compile, `sketchybarrc` restores the shell
+plugins' timers, so the bar degrades to the old behaviour rather than showing
+`--` forever. `check.sh` asserts whichever of the two is in force.
+
+Debugging: `SB_HELPER_DEBUG=1 bin/sb-helper git.felix.test` traces the receive
+path, and `bin/sb-helper --selftest` prints every reading as `key=value`.
 
 ## Permissions
 

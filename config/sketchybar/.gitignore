@@ -4,6 +4,8 @@
 bin/*
 !bin/*.swift
 !bin/*.sh
+!bin/*.c
+!bin/*.h
 
 # Local backups from the Kanagawa -> Tokyo Night switch
 *.bak

@@ -242,8 +242,9 @@ CWANT="$(printf '\363\260\205\266' | xxd -p)"
 CGOT="$(sketchybar --query caffeine 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
 is "coffee glyph U+F0176 bytes" "$CGOT" "$CWANT"
 CAFFEINE_LIB=1 source "$CONFIG_DIR/plugins/caffeine.sh"
-# shellcheck disable=SC2034  # read by caffeine_pid(), sourced above
-CSF="$(mktemp)"; CAFFEINE_STATE_FILE="$CSF"
+CSF="$(mktemp)"
+# shellcheck disable=SC2034  # read by caffeine_pid(), sourced just above
+CAFFEINE_STATE_FILE="$CSF"
 echo 1 > "$CSF"        # alive, but launchd -- i.e. a recycled PID
 caffeine_pid >/dev/null && bad "recycled PID reads as running" || ok "recycled PID reads as off"
 echo 999999 > "$CSF"   # dead
@@ -506,6 +507,116 @@ is "working digit" "$(sketchybar --query herdr.working 2>/dev/null | jq -r '.lab
 is "zero-count digit hides" "$(sketchybar --query herdr.done 2>/dev/null | jq -r '.geometry.drawing')" "off"
 is "sheep wears the urgent colour" "$(sketchybar --query herdr 2>/dev/null | jq -r '.icon.color')" "$RED"
 "$CONFIG_DIR/plugins/herdr.sh"   # re-render from the live socket
+
+echo "sb-helper:"
+# The helper renders cpu, mem, net_up/down, mic, volume and the herdr cluster
+# from one process. It cannot be sourced the way a shell plugin can, so it
+# answers --selftest with one key=value per line instead - that is what keeps
+# this suite able to assert its arithmetic rather than only its side effects.
+HELPER="$CONFIG_DIR/bin/sb-helper"
+if [ ! -x "$HELPER" ]; then
+  bad "bin/sb-helper not built (see ~/.cache/sketchybar/build-sb-helper.err)"
+  HST=""
+else
+  ok "helper built"
+  # A fixture drives the herdr half, the same hook plugins/herdr.sh honours, so
+  # the counts under test do not depend on what herdr is really running.
+  HFIX_H='{"result":{"agents":[
+    {"pane_id":"w1:p1","agent_status":"blocked"},{"pane_id":"w2:p1","agent_status":"working"},
+    {"pane_id":"w3:p1","agent_status":"working"},{"pane_id":"w4:p1","agent_status":"idle"}]}}'
+  HST="$(SB_HELPER_HERDR_JSON="$HFIX_H" "$HELPER" --selftest 2>/dev/null)"
+  [ -n "$HST" ] && ok "selftest ran" || bad "selftest produced nothing"
+fi
+
+hval() { printf '%s\n' "$HST" | awk -F= -v k="$1" '$1==k {print $2; exit}'; }
+
+if [ -n "$HST" ]; then
+  pct "helper cpu" "$(hval cpu)"
+  pct "helper mem" "$(hval mem)"
+  pct "helper mem_resident" "$(hval mem_resident)"
+  # The displayed memory number must stay the one memory_pressure reports: the
+  # native page-sum reads far higher (it counts what is resident rather than
+  # what cannot be reclaimed) and swapping to it would silently redefine the
+  # item AND invalidate the 60/85 colour thresholds. Asserted within 3 points
+  # of the shell reading, not equality - they are sampled moments apart.
+  SHELL_MEM="$(memory_pressure 2>/dev/null | awk '/free percentage/ {gsub("%","",$NF); printf "%.0f", 100-$NF}')"
+  HD=$(( $(hval mem) - ${SHELL_MEM:-0} )); HD=${HD#-}
+  [ "$HD" -le 3 ] 2>/dev/null && ok "helper mem tracks memory_pressure ($(hval mem) vs $SHELL_MEM)" \
+                              || bad "helper mem drifted from memory_pressure ($(hval mem) vs ${SHELL_MEM:-?})"
+  # Throughput must stay integers: a nil rate rendered as a label is how the
+  # link once showed a multi-GB/s spike off a counter reset.
+  case "$(hval net)" in
+    [0-9]*/[0-9]*) ok "helper net rates = $(hval net)" ;;
+    *)             bad "helper net rates not int/int (got '$(hval net)')" ;;
+  esac
+  # Five characters max, or the measured label widths in sketchybarrc no longer
+  # hold and the cluster grows into the notch.
+  is "helper rate formatting" "$(hval human)" "0B/2K/5.0M/200M"
+  case "$(hval mic)" in 0|1) ok "helper mic = $(hval mic)" ;; *) bad "helper mic not 0/1 (got '$(hval mic)')" ;; esac
+  case "$(hval volume)" in
+    NONE)                 ok "helper volume: device exposes no scalar" ;;
+    ''|*[!0-9]*)          bad "helper volume not an int (got '$(hval volume)')" ;;
+    *)                    pct "helper volume" "$(hval volume)" ;;
+  esac
+  case "$(hval muted)" in 0|1) ok "helper muted = $(hval muted)" ;; *) bad "helper muted not 0/1" ;; esac
+  is "helper counts the fixture flock" "$(hval herdr)" "1/2/0/1/0"
+  is "helper tints by the urgent state" "$(hval tint)" "$RED"
+  # sb-helper.swift carries its own copy of the palette - it starts once, and
+  # sourcing colors.sh would reintroduce the fork the helper exists to remove.
+  # This is the guard on that duplication.
+  is "helper palette matches colors.sh" "$(hval colors)" \
+     "$RED,$BLUE,$GREEN,$FG_DIM,$ORANGE,$YELLOW,$AQUA"
+fi
+
+echo "sb-helper ownership:"
+# Guards the whole point of the helper: if one of these regains an update_freq
+# it is being polled by a forked script again, and the duty cycle quietly
+# returns to what it was. The items keep script= for event dispatch (card
+# closing), which is correct - only a nonzero update_freq means polling.
+if pgrep -x sb-helper >/dev/null 2>&1; then
+  ok "helper process running"
+  for i in cpu mem net_down mic volume herdr; do
+    UF="$(sketchybar --query "$i" 2>/dev/null | jq -r '.scripting.update_freq // 0')"
+    [ "${UF:-0}" = "0" ] && ok "$i has no poll timer" \
+                         || bad "$i is polling again (update_freq=$UF)"
+  done
+  # Set by the helper itself, once it has claimed the bootstrap name - that is
+  # what makes a scroll instant instead of a ~107ms wait on osascript.
+  VU="$(sketchybar --query volume 2>/dev/null | jq -r '.scripting.update_mask // 0')"
+  [ "${VU:-0}" -gt 0 ] 2>/dev/null && ok "volume still subscribed to its events" \
+                                   || bad "volume lost its event subscriptions"
+else
+  # Legitimate state: no toolchain, or a failed build. sketchybarrc restores the
+  # shell timers in that case, so assert the FALLBACK rather than the helper.
+  ok "helper not running, checking shell fallback"
+  for i in mem net_down mic herdr; do
+    UF="$(sketchybar --query "$i" 2>/dev/null | jq -r '.scripting.update_freq // 0')"
+    [ "${UF:-0}" != "0" ] && ok "$i fell back to polling (update_freq=$UF)" \
+                          || bad "$i has neither a helper nor a poll timer - it will never update"
+  done
+fi
+
+echo "cpu card agrees with the bar:"
+# The regression this guards is the one the helper could reintroduce: the card
+# used to sum `ps` itself, so it and the item quoted different numbers for the
+# same thing. The card now reads what the helper published.
+CARD_CPU="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/cpu.sh"
+             card_rows 2>/dev/null | head -1 | cut -f3 )"
+case "$CARD_CPU" in
+  *"CPU "*"Memory "*) ok "card summary row: $CARD_CPU" ;;
+  *)                  bad "card summary row malformed (got '$CARD_CPU')" ;;
+esac
+# A helper that died must not leave the card quoting a frozen reading.
+STALE_DIR="$(mktemp -d)"
+printf '{"at":1,"cpu":99,"mem":99}\n' > "$STALE_DIR/helper-state.json"
+STALE_CPU="$( set +u; source "$CONFIG_DIR/colors.sh"; SB_CACHE_DIR="$STALE_DIR"
+              source "$CONFIG_DIR/cards/cpu.sh"; card_rows 2>/dev/null | head -1 | cut -f3 )"
+case "$STALE_CPU" in
+  *"CPU 99%"*) bad "card quoted a stale helper reading" ;;
+  *"CPU "*)    ok "stale helper state ignored, card fell back to sys_lib" ;;
+  *)           bad "card produced nothing on the stale path (got '$STALE_CPU')" ;;
+esac
+rm -rf "$STALE_DIR"
 
 echo "deps:"
 # timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its
