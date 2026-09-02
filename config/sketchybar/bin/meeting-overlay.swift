@@ -112,12 +112,34 @@ let buttons = NSStackView()
 buttons.orientation = .horizontal
 buttons.spacing = 16
 
+// Explicitly styled: the system .rounded bezel draws its own (near-black on
+// dark grey) title over our dark background, so paint the button ourselves.
 func button(_ t: String, _ sel: Selector, primary: Bool) -> NSButton {
     let b = NSButton(title: t, target: actions, action: sel)
-    b.bezelStyle = .rounded
-    b.font = .systemFont(ofSize: 18, weight: primary ? .semibold : .regular)
-    b.contentTintColor = primary ? accent : dim
+    b.isBordered = false
     b.setButtonType(.momentaryPushIn)
+    b.wantsLayer = true
+    b.layer?.cornerRadius = 8
+    if primary {
+        // Solid accent fill (tier colour, e.g. blue 7aa2f7) with dark navy text.
+        b.layer?.backgroundColor = accent.cgColor
+    } else {
+        // Quiet secondary: subtle raised fill with a hairline border, fg text.
+        b.layer?.backgroundColor = hex("24283b").cgColor
+        b.layer?.borderColor = hex("3b4261").cgColor
+        b.layer?.borderWidth = 1
+    }
+    let style = NSMutableParagraphStyle()
+    style.alignment = .center
+    b.attributedTitle = NSAttributedString(string: t, attributes: [
+        .font: NSFont.systemFont(ofSize: 18, weight: primary ? .semibold : .regular),
+        .foregroundColor: primary ? hex("1f2335") : fg,
+        .paragraphStyle: style,
+    ])
+    // A borderless button has no bezel padding; give it the same footprint.
+    b.translatesAutoresizingMaskIntoConstraints = false
+    b.widthAnchor.constraint(equalToConstant: b.attributedTitle.size().width + 44).isActive = true
+    b.heightAnchor.constraint(equalToConstant: 42).isActive = true
     return b
 }
 
