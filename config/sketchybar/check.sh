@@ -516,6 +516,69 @@ is "productive emits 5 detail rows plus every planned project" "$PROWS" "15"
   || bad "productive needs $PROWS rows but its budget is $(card_rows_max productive)"
 rm -rf "$PT"
 
+# A booking must never be lost between Productive and the card. Two failures
+# lived in the joins and neither showed up anywhere: two bookings on ONE
+# project (two budgets - this week's real shape) were collapsed into one row by
+# unique_by(.project_id), and a project you have never tracked against was
+# dropped whole by a select() on your own history. Both are invisible in the
+# cache, because the cache is the thing that lost them, so this drives
+# productive_plan.sh --plan with fixtures instead: the API half cannot be
+# tested, the join half is where the rows die.
+PP="$(mktemp -d)"
+cat > "$PP/svc.json" <<'CHKPLAN'
+{"data":[
+ {"id":"111","attributes":{"name":"Senior Architect"},"relationships":{"deal":{"data":{"id":"d1"}}}},
+ {"id":"222","attributes":{"name":"Senior Architect (def)"},"relationships":{"deal":{"data":{"id":"d2"}}}},
+ {"id":"333","attributes":{"name":"Arch Lead"},"relationships":{"deal":{"data":{"id":"d3"}}}}],
+ "included":[
+ {"id":"d1","type":"deals","attributes":{"name":"policy-rule-engine"},"relationships":{"project":{"data":{"id":"p1"}}}},
+ {"id":"d2","type":"deals","attributes":{"name":"healthcare-2dot0"},"relationships":{"project":{"data":{"id":"p1"}}}},
+ {"id":"d3","type":"deals","attributes":{"name":"discovery"},"relationships":{"project":{"data":{"id":"p2"}}}},
+ {"id":"p1","type":"projects","attributes":{"name":"vbrb-0001"}},
+ {"id":"p2","type":"projects","attributes":{"name":"newly-booked"}}]}
+CHKPLAN
+# History on p1 only, and on d2 through a service you were NOT booked on: the
+# same-budget preference is what has to keep the two p1 rows on their own
+# budgets instead of both starting the project's most-used service.
+cat > "$PP/usage.json" <<'CHKUSE'
+[{"service_id":"111","uses":9,"project":"vbrb-0001","project_id":"p1","deal_id":"d1","service":"Senior Architect"},
+ {"service_id":"999","uses":4,"project":"vbrb-0001","project_id":"p1","deal_id":"d2","service":"Delivery"}]
+CHKUSE
+PPR="$("$CONFIG_DIR/plugins/productive_plan.sh" --plan "$PP/svc.json" "$PP/usage.json" 2>/dev/null)"
+is "every booking becomes a row" "$(printf '%s' "$PPR" | jq -r 'length')" "3"
+is "two budgets on one project stay two rows" \
+   "$(printf '%s' "$PPR" | jq -r '[.[]|select(.project=="vbrb-0001")|.budget]|sort|join(",")')" \
+   "healthcare-2dot0,policy-rule-engine"
+is "each row starts a timer on its own budget" \
+   "$(printf '%s' "$PPR" | jq -r '[.[]|select(.project=="vbrb-0001")]|sort_by(.budget)|map(.service_id)|join(",")')" \
+   "999,111"
+is "a project with no history keeps its row" \
+   "$(printf '%s' "$PPR" | jq -r '[.[]|select(.project=="newly-booked")]|length')" "1"
+is "and that row has no service to start" \
+   "$(printf '%s' "$PPR" | jq -r '.[]|select(.project=="newly-booked")|.service_id')" ""
+# on_budget is what plan_fill keys off, so the flag has to mean what it says:
+# only the booking history could not place on its own budget carries false.
+is "only the unplaced booking is flagged off-budget" \
+   "$(printf '%s' "$PPR" | jq -r '[.[]|select(.on_budget==false)|.project]|join(",")')" \
+   "newly-booked"
+
+# ...and the card renders that row rather than skipping it: the loop used to
+# `continue` on an empty service_id, which is a third place a booking died.
+printf '%s' "$PPR" > "$PP/plan.json"
+printf '%s' '{"running":false}' > "$PP/idle.json"
+# shellcheck source=/dev/null
+PCR="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/productive.sh"
+        export PRODUCTIVE_CACHE="$PP/idle.json" PRODUCTIVE_PLAN_CACHE="$PP/plan.json"
+        card_rows 2>/dev/null )"
+is "card shows 2 detail rows and all 3 bookings" "$(printf '%s\n' "$PCR" | grep -c .)" "5"
+is "the two budgets are told apart on the card" \
+   "$(printf '%s\n' "$PCR" | awk -F'\t' '$3 ~ /vbrb-0001/ {print $3}' | sort | tr '\n' '/')" \
+   "vbrb-0001  ·  healthcare-2dot0/vbrb-0001  ·  policy-rule-engine/"
+is "the unstartable booking opens the timesheet" \
+   "$(printf '%s\n' "$PCR" | awk -F'\t' '$3 ~ /newly-booked/ {print $4}')" \
+   "$CONFIG_DIR/plugins/brave_tab.sh 3"
+rm -rf "$PP"
+
 # Media: exactly one actionable row, and it is the transport control at the end.
 # With no session at all (fresh boot, nothing ever played) the card correctly
 # renders one actionless "Nothing playing" row instead - a second right shape,

@@ -113,9 +113,9 @@ export CARD_AWAY_EVENTS="front_app_switched space_change display_change system_w
 # running timer - project, budget, elapsed, started, note - and only then lists
 # this week's planning, so a shared eight left the plan three rows and dropped
 # the rest with no symptom. Sixteen keeps those five and still has room for
-# eleven projects, against the 1-4 a week bookings have actually run this
-# quarter; the spare rows are created hidden in the same batched call, so one
-# that is never filled costs nothing but its existence.
+# eleven bookings, against the 1-4 a week you have actually had this quarter;
+# the spare rows are created hidden in the same batched call, so one that is
+# never filled costs nothing but its existence.
 #
 # A case, not an associative array: launchd hands this config bash 3.2.
 card_rows_max() { # card_rows_max <item>
