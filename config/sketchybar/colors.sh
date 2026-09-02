@@ -71,6 +71,43 @@ card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr"
 export CARD_ROWS=8
 
+# The events that stand in for the global click sketchybar does not have.
+# mouse.exited.global only fires when the pointer LEAVES the bar, so clicking
+# straight into another app, cmd-tabbing without touching the trackpad, or
+# switching space all used to leave a popup hanging until the 45s watchdog.
+# Each of these means the user is no longer looking at the card, so card.sh's
+# `away` sweep closes every one. Named here so sketchybarrc's --subscribe and
+# check.sh's assertion cannot drift.
+#
+# space_windows_change is deliberately absent: it fires whenever any app
+# anywhere opens or closes a window, so a background notification would shut a
+# card mid-read. It is not a click.
+#
+# A true global click monitor was researched and REJECTED, and permissions were
+# NOT what killed it. Measured, not assumed: an unsigned throwaway binary with
+# AXIsProcessTrusted()=false and CGPreflightListenEventAccess()=false got all
+# three of three real clicks through NSEvent.addGlobalMonitorForEvents, with no
+# TCC prompt and no grant. The same process saw zero keyDown events, which is
+# what AppKit's own NSEvent.h documents - the accessibility gate is on
+# "key-related events" only. Mouse is free; keyboard is not.
+#
+# What killed it is that the monitor cannot tell an outside click from a click
+# ON the bar or the popup, and it must, or every row click and every toggle
+# breaks. The same run caught a click at 24.8pt from the top of a 1117pt
+# screen - inside the 32pt bar - and the monitor was handed it like any other.
+# Rejecting those needs the bar's rect, which is fine, AND the popup's, which
+# sketchybar does not expose: --query <item> gives .popup only its per-row
+# height and item list, no origin and no size, so the rect would have to be
+# rebuilt from the owner's bounding_rect, the align, the y_offset, the visible
+# row count and the widest row - on the click hot path, and wrong the moment
+# any of those changes. bin/sb-helper could not host it anyway: it is send-only
+# by design and cannot read an item's rect back at all, and its main thread
+# parks on dispatchMain(), which is not a CFRunLoop - the monitor's callbacks
+# arrive on the main run loop, so it would also mean linking AppKit and
+# restructuring the helper's main loop. A CGEventTap needs Accessibility
+# outright, which is out of all proportion to dismissing a popup.
+export CARD_AWAY_EVENTS="front_app_switched space_change display_change system_woke"
+
 # Hover dispatch for a card owner. Every one of them runs on an update_freq, so
 # routing the routine tick through here arms the stuck-card watchdog for all
 # six rather than for the one item that happened to call card.sh by hand.

@@ -521,6 +521,27 @@ sketchybar --add item display_watch right \
                                script="$PLUGIN_DIR/display.sh" \
            --subscribe display_watch display_change
 
+##### Outside-click watcher #####
+# Zero-width item that stands in for the global click event sketchybar does not
+# have. Cards already close when the pointer leaves the bar and when another
+# card opens; neither covers clicking straight into another app or cmd-tabbing
+# without moving the mouse. $CARD_AWAY_EVENTS is the set that does - see the
+# note there, which also records why a real mouse monitor was rejected.
+#
+# One watcher rather than the same subscription on all seven owners: that is a
+# single forked script per app switch instead of seven, and card.sh's away
+# sweep closes every item in $CARD_ITEMS in one call regardless of which was
+# open. Because the sweep reads that set itself, a new card is wired into the
+# close path by naming it in colors.sh and nowhere else - nothing to add here.
+#
+# shellcheck disable=SC2086  # deliberate split: one --subscribe, every event
+sketchybar --add item card_watch right \
+           --set card_watch drawing=off \
+                            icon.drawing=off \
+                            label.drawing=off \
+                            script="$PLUGIN_DIR/card.sh away" \
+           --subscribe card_watch $CARD_AWAY_EVENTS
+
 # Card rows are added last: every parent item must exist first.
 for c in $CARD_ITEMS; do card_rows_for "$c"; done
 

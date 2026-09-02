@@ -341,6 +341,95 @@ is "opening one card closes the other" "$CO" "offon"
 grep -rq "mouse.entered" "$CONFIG_DIR/sketchybarrc" "$CONFIG_DIR/plugins" "$CONFIG_DIR/cards" 2>/dev/null \
   && bad "mouse.entered still wired somewhere" || ok "no hover wiring left"
 
+echo "outside click:"
+# sketchybar has no global click event, so a click elsewhere is inferred from
+# $CARD_AWAY_EVENTS and swept by `card.sh away`. Three things can rot: the
+# watcher item, its subscriptions, and the sweep missing a card. The sweep is
+# driven against a STUB sketchybar rather than the live bar - the bar cannot be
+# reloaded from here, and a real sweep would tell us nothing about the six
+# cards that happened to be closed already.
+CAW="$(mktemp -d)"   # removed at the end of this block; no trap, as above
+mkdir -p "$CAW/bin"
+cat > "$CAW/bin/sketchybar" <<'CHKSTUB'
+#!/bin/sh
+printf 'CALL' >> "$SB_AWAY_LOG"
+printf ' %s' "$@" >> "$SB_AWAY_LOG"
+printf '\n' >> "$SB_AWAY_LOG"
+CHKSTUB
+chmod +x "$CAW/bin/sketchybar"
+# Every directory colors.sh prepends is already listed, so its PATH repair is a
+# no-op here and the stub stays in front of the real binary. XDG_CACHE_HOME
+# moves SB_CACHE_DIR aside so the sweep sees no stamps - and cannot touch the
+# stamp of a card the user has open right now.
+card_away_run() { # card_away_run <log>
+  : > "$1"
+  SB_AWAY_LOG="$1" XDG_CACHE_HOME="$CAW/cache" \
+  PATH="$CAW/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/bin:$HOME/code/assistant/bin:/usr/bin:/bin" \
+    "$CONFIG_DIR/plugins/card.sh" away 2>"$1.err"
+}
+
+card_away_run "$CAW/cold"
+CAMISS=""
+for c in $CARD_ITEMS; do
+  grep -q -- "--set $c popup.drawing=off" "$CAW/cold" || CAMISS="$CAMISS $c"
+done
+CANUM="$(printf '%s\n' $CARD_ITEMS | grep -c .)"
+[ -z "$CAMISS" ] && ok "sweep closes all $CANUM cards" || bad "sweep never reaches:$CAMISS"
+# One call, not one per card: this runs on every app switch.
+is "sweep is a single sketchybar call" "$(grep -c '^CALL' "$CAW/cold")" 1
+# A closed card has no stamp, and bash reports a failed input redirect on the
+# stderr it still has - the trailing-2>/dev/null form leaked six lines into the
+# bar's log per app switch.
+is "sweep is silent on stampless cards" "$(wc -c < "$CAW/cold.err" | tr -d ' ')" 0
+
+# A card opened in the same instant must survive. A row action that focuses an
+# app fires front_app_switched straight back at the sweep, and --update at
+# config load runs it with SENDER=forced.
+date +%s > "$CAW/cache/sketchybar/card-wifi.at"
+card_away_run "$CAW/fresh"
+grep -q -- "--set wifi popup.drawing=off" "$CAW/fresh" \
+  && bad "sweep shut a card that had just opened" || ok "a just-opened card survives the sweep"
+grep -q -- "--set cpu popup.drawing=off" "$CAW/fresh" \
+  && ok "the grace spares only the fresh card" || bad "grace spared a card that was not fresh"
+
+# An unreadable stamp must not wedge the sweep shut, the way tick treats one.
+printf 'not-a-number' > "$CAW/cache/sketchybar/card-herdr.at"
+card_away_run "$CAW/junk"
+grep -q -- "--set herdr popup.drawing=off" "$CAW/junk" \
+  && ok "a corrupt stamp still closes" || bad "a corrupt stamp left a card open"
+
+# The watcher on the live bar. Everything above passes with the item deleted,
+# which is exactly the regression this catches.
+CWQ="$(sketchybar --query card_watch 2>/dev/null)"
+is "watcher item exists" "$(printf '%s' "$CWQ" | jq -r '.name // ""')" "card_watch"
+# Matched on the suffix: the bar records the path it was loaded through
+# (~/.config/sketchybar, a symlink), not the directory this script lives in.
+case "$(printf '%s' "$CWQ" | jq -r '.scripting.script // ""')" in
+  */plugins/card.sh\ away) ok "watcher runs the away sweep" ;;
+  *)                       bad "watcher does not run card.sh away" ;;
+esac
+# One mask bit per event, so the popcount is how many subscriptions actually
+# took. Asserting the mask itself would pin this to sketchybar's internal
+# event ordering.
+CWM="$(printf '%s' "$CWQ" | jq -r '.scripting.update_mask // 0')"
+CWBITS=0
+while [ "${CWM:-0}" -gt 0 ] 2>/dev/null; do
+  CWBITS=$(( CWBITS + (CWM & 1) )); CWM=$(( CWM >> 1 ))
+done
+is "watcher took every away event" "$CWBITS" "$(printf '%s\n' $CARD_AWAY_EVENTS | grep -c .)"
+# And it must subscribe through the named set, or colors.sh and sketchybarrc
+# drift the moment an event is added to one of them.
+grep -q -- '--subscribe card_watch \$CARD_AWAY_EVENTS' "$CONFIG_DIR/sketchybarrc" \
+  && ok "sketchybarrc subscribes the named event set" \
+  || bad "sketchybarrc hardcodes the away events instead of \$CARD_AWAY_EVENTS"
+# space_windows_change fires on any window opening anywhere - it would shut a
+# card mid-read, and it is not a click.
+case " $CARD_AWAY_EVENTS " in
+  *" space_windows_change "*) bad "space_windows_change would close cards on background windows" ;;
+  *)                          ok "no window-churn event in the away set" ;;
+esac
+rm -rf "$CAW"
+
 echo "card row actions:"
 # Every row must carry a click_script, or a row silently does nothing.
 "$CONFIG_DIR/plugins/card.sh" meeting open >/dev/null 2>&1

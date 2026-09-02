@@ -2,6 +2,7 @@
 # Hover-card engine, shared by every item that has one.
 #
 #   card.sh <item> toggle|open|close|tick
+#   card.sh away
 #
 # Content lives in cards/<item>.sh, which must define card_rows() emitting one
 # row per line as: <glyph>\t<color>\t<text>. The engine owns the delay, the
@@ -11,6 +12,10 @@
 # mouse.exited.global dismisses it when the pointer leaves the bar entirely.
 # There is no dwell delay - a click is already a deliberate act, so waiting
 # half a second after one would just feel broken.
+#
+# `away` is the outside click. sketchybar has no global click event, so the
+# card_watch item in sketchybarrc subscribes to the ones a click elsewhere
+# implies ($CARD_AWAY_EVENTS) and routes them all here.
 #
 # Rows carry their own actions. cards/<item>.sh may add a fourth field, a
 # shell command run when that row is clicked; the engine appends a close so
@@ -23,7 +28,12 @@ source "$CONFIG_DIR/plugins/fit.sh"
 ITEM="${1:?card.sh needs an item}"
 ACTION="${2:-open}"
 
+# `away` is the one action with no item - an outside click dismisses every card -
+# so it is accepted as the sole argument rather than made to name one.
+[ "$ITEM" = away ] && ACTION=away
+
 MAX_OPEN=45        # watchdog: force-close a card left open this long
+AWAY_GRACE=1       # away: spare a card opened this recently (see card_away)
 MAX_CHARS=64
 
 STAMP="$SB_CACHE_DIR/card-$ITEM.at"
@@ -35,8 +45,38 @@ card_close() {
   exit 0
 }
 
+# The outside click. Closes every card rather than asking which one was open:
+# seven --query round trips cost more than seven blind closes, and
+# popup.drawing=off on an already-closed card is a no-op - the same trade the
+# open path below makes. Driven by $CARD_ITEMS so a new card is wired in by
+# naming it there and nowhere else.
+card_away() {
+  NOW="$(date +%s)"
+  AWAY_ARGS=()
+  for away_item in $CARD_ITEMS; do
+    # Braces, not a trailing 2>/dev/null: bash applies the input redirect first
+    # and reports a missing stamp on the stderr it still has, so the trailing
+    # form leaked "No such file or directory" for every closed card - six or
+    # seven lines into the bar's log on every single app switch.
+    AT=0
+    { read -r AT < "$SB_CACHE_DIR/card-$away_item.at"; } 2>/dev/null
+    case "$AT" in ''|*[!0-9]*) AT=0 ;; esac
+    # A card opened in this same second keeps its popup. A row action that
+    # focuses an app - the meeting row's zoom://, herdr's editor - fires
+    # front_app_switched straight back at us, and sketchybar's --update at
+    # config load runs this script with SENDER=forced; without the grace either
+    # would shut a card before it had drawn.
+    [ "$AT" -gt 0 ] && [ $(( NOW - AT )) -lt "$AWAY_GRACE" ] && continue
+    rm -f "$SB_CACHE_DIR/card-$away_item.at"
+    AWAY_ARGS+=(--set "$away_item" popup.drawing=off)
+  done
+  [ "${#AWAY_ARGS[@]}" -gt 0 ] && sketchybar "${AWAY_ARGS[@]}"
+  exit 0
+}
+
 case "$ACTION" in
   close) card_close ;;
+  away)  card_away ;;
   toggle)
     [ "$(sketchybar --query "$ITEM" 2>/dev/null | jq -r '.popup.drawing')" = "on" ] && card_close
     ;;
