@@ -68,7 +68,7 @@ card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 # sketchybarrc pre-creates the rows, card.sh closes the others when one opens
 # and check.sh asserts both - naming the set once is what stops those three
 # from drifting apart.
-export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr"
+export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr clock"
 export CARD_ROWS=8
 
 # The events that stand in for the global click sketchybar does not have.

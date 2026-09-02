@@ -104,7 +104,8 @@ click focuses that agent) · current meeting · productive timer
 Bluetooth / volume / battery · mic-in-use · clock
 
 Interactive: click volume to mute (scroll to change), Bluetooth to toggle power,
-now-playing to play/pause, CPU/memory for Activity Monitor, clock for Calendar,
+now-playing to play/pause, CPU/memory for Activity Monitor, clock for the ISO
+week + this week's hours + jump-offs to the calendar, timesheet and Focus note,
 Wi-Fi and battery for their Settings panes, mic for the privacy pane.
 
 The mic indicator is hidden unless something is actually capturing, and the

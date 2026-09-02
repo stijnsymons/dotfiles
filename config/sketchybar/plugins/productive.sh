@@ -38,6 +38,12 @@ productive_creds || true
 # on all but one tick an hour.
 "$CONFIG_DIR/plugins/productive_plan.sh" >/dev/null 2>&1 || true
 
+# Same arrangement for this week's logged-vs-booked total, which the clock card
+# reads. It lives on this tick and not the clock's because this is the item
+# that already holds the Productive credentials and the 60s budget for a
+# network call; the clock ticks every 15s and must stay a `date` call.
+"$CONFIG_DIR/plugins/productive_week.sh" >/dev/null 2>&1 || true
+
 # Minutes -> "3h45m" / "45m".
 fmt() {
   local m=${1:-0}

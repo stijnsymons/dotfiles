@@ -591,6 +591,74 @@ case "$(mart mirror)" in
   *)    bad "card rows and art_rows disagree ($(mart mirror_detail))" ;;
 esac
 
+echo "clock card:"
+# The ISO week is the whole reason this card exists - macOS surfaces it nowhere
+# and the weekly rhythm is named by it - so it is asserted against date itself.
+KROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/clock.sh"
+          card_rows 2>/dev/null )"
+is "week row matches date +%V" \
+   "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==1{print $3}')" "Week $(date +%V)"
+nonempty "date row" "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==2{print $3}')"
+is "no row spills past four fields" \
+   "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NF>4' | grep -c . | tr -d ' ')" "0"
+
+# Opening this card must never wait on the Productive API, so the hours row
+# reads productive_week.sh's cache or shows nothing. Three ways to have no
+# figure - no file, a file about another week, a file too old - and every one
+# of them has to print the dash instead of a number.
+KDIR="$(mktemp -d)"
+khours() { ( set +u; source "$CONFIG_DIR/colors.sh"; SB_CACHE_DIR="$KDIR"
+             source "$CONFIG_DIR/cards/clock.sh"; card_rows 2>/dev/null | sed -n 3p | cut -f3 ); }
+KH="$(khours)"
+case "$KH" in "—"*) ok "missing cache degrades to a dash" ;;
+              *) bad "hours row invented a figure with no cache (got '$KH')" ;; esac
+printf '{"week":"1970-W01","logged_minutes":999,"booked_minutes":2400}\n' > "$KDIR/productive-week.json"
+KH="$(khours)"
+case "$KH" in "—"*) ok "a cache about another week is not quoted" ;;
+              *) bad "hours row quoted another week (got '$KH')" ;; esac
+printf '{"week":"%s","logged_minutes":1680,"booked_minutes":2400}\n' "$(date +%G-W%V)" \
+  > "$KDIR/productive-week.json"
+is "this week's cache renders as hours" "$(khours)" "28h / 40h logged this week"
+touch -t 200001010000 "$KDIR/productive-week.json"
+KH="$(khours)"
+case "$KH" in "—"*) ok "a stale cache is not quoted" ;;
+              *) bad "hours row quoted a stale cache (got '$KH')" ;; esac
+rm -rf "$KDIR"
+
+# Pro-rated by how far into the week you are, which is the only way the figure
+# means anything: 8h on Monday is fine and the same 8h on Wednesday is not.
+# 2400 minutes = a 40h week.
+kcolor() { ( set +u; source "$CONFIG_DIR/cards/clock.sh"; clock_hours_color "$1" "$2" "$3" ); }
+is "8h on Monday is on track"      "$(kcolor 480 2400 1)"  "$GREEN"
+is "8h by Wednesday is far behind" "$(kcolor 480 2400 3)"  "$RED"
+is "15h by Wednesday is behind"    "$(kcolor 900 2400 3)"  "$YELLOW"
+is "36h by Friday is on track"     "$(kcolor 2160 2400 5)" "$GREEN"
+is "nothing booked stays dim"      "$(kcolor 0 0 3)"       "$FG_DIM"
+
+# The jump-offs are half of what this card is for, and a row pointing at
+# something that is not a command fails silently - it still draws.
+KACT="$(printf '%s\n' "$KROWS" | awk -F'\t' 'NF==4{print $4}')"
+KMISS=0
+while IFS= read -r ka; do
+  [ -z "$ka" ] && continue
+  ka="${ka%% *}"
+  [ -x "$ka" ] || command -v "$ka" >/dev/null 2>&1 \
+    || { bad "clock action '$ka' is not a command"; KMISS=1; }
+done <<CHKCLOCK
+$KACT
+CHKCLOCK
+[ "$KMISS" -eq 0 ] && ok "every clock action resolves to a command"
+# card.sh clears any action carrying one of these, which costs the row its
+# click and nothing else - so it fails without a symptom. Obsidian's own
+# obsidian:// URI carries an `&`, which is why the note row uses `open -a`.
+is "no clock action trips card.sh's filter" "$(printf '%s\n' "$KACT" | tr -cd ';`$|&<>()')" ""
+case "$KACT" in
+  *"brave_tab.sh 2"*"r/day"*) ok "calendar row opens the day view in tab 2" ;;
+  *) bad "clock has no day-view row for Brave tab 2" ;;
+esac
+case "$KACT" in *"brave_tab.sh 3"*) ok "timesheet row focuses tab 3" ;;
+                *) bad "clock has no timesheet row" ;; esac
+
 echo "untrusted text:"
 # Row text is free text from calendars, Productive, nowplaying and SSIDs, and
 # the row separator is a tab - so a tab inside one shifts everything after it

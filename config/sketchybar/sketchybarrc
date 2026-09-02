@@ -339,13 +339,21 @@ sketchybar --set productive "${card_popup[@]}" \
 
 # Clock (rightmost). padding_right keeps the last digit clear of the macOS
 # recording indicator, which macOS paints over the corner of the screen.
+#
+# The click used to open Calendar.app, which the user does not use at all --
+# their calendar is a pinned Brave tab. It opens the card instead, which
+# carries the ISO week (the one date fact macOS never shows), this week's
+# hours, and rows that go to the places the click was reaching for.
 sketchybar --add item clock right \
            --set clock icon=󰥔 \
                        icon.color="$VIOLET" \
                        padding_right=10 \
                        update_freq=15 \
-                       click_script="open -a Calendar" \
+                       click_script="$PLUGIN_DIR/card.sh clock toggle" \
                        script="$PLUGIN_DIR/clock.sh"
+
+sketchybar --set clock "${card_popup[@]}" \
+           --subscribe clock mouse.exited.global
 
 sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
 
