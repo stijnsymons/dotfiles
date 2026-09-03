@@ -68,7 +68,7 @@ card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 # sketchybarrc pre-creates the rows, card.sh closes the others when one opens
 # and check.sh asserts both - naming the set once is what stops those three
 # from drifting apart.
-export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr clock"
+export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr clock mic"
 export CARD_ROWS=8
 
 # The events that stand in for the global click sketchybar does not have.
@@ -118,10 +118,16 @@ export CARD_AWAY_EVENTS="front_app_switched space_change display_change system_w
 # never filled costs nothing but its existence.
 #
 # A case, not an associative array: launchd hands this config bash 3.2.
+# meeting is raised for the same reason and was caught by the same assertion:
+# five detail rows for the meeting you are in (title, time, join link,
+# attendees, description) and then the rest of the day, so a shared eight was
+# showing the current meeting plus three of the six events still to come and
+# dropping the other three - 15:00, 16:30 and 17:30 on the day this was
+# measured. Sixteen covers five details plus a fully booked day.
 card_rows_max() { # card_rows_max <item>
   case "$1" in
-    productive) printf '16\n' ;;
-    *)          printf '%s\n' "$CARD_ROWS" ;;
+    productive|meeting) printf '16\n' ;;
+    *)                  printf '%s\n' "$CARD_ROWS" ;;
   esac
 }
 

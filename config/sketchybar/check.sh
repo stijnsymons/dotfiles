@@ -948,6 +948,59 @@ case "$STALE_CPU" in
 esac
 rm -rf "$STALE_DIR"
 
+echo "mic card:"
+# The card and the indicator must never contradict each other: a red "mic in
+# use" over a card saying nothing is capturing, or the reverse, is worse than
+# either alone. Both read the same CoreAudio call in the same binary, and
+# --selftest reports whether they agreed at the same instant.
+if [ -x "$CONFIG_DIR/bin/sb-helper" ]; then
+  is "item and card agree on mic state" "$(hval mic_agree)" "1"
+  MC="$(hval mic_consumers)"
+  case "$MC" in ''|*[!0-9]*) bad "consumer count not an int (got '$MC')" ;;
+                *)           ok "helper reports $MC mic consumer(s)" ;; esac
+  # An unknown flag must NOT be taken for a bootstrap name: the default mode of
+  # this binary is to daemonise, so a typo used to fork a second helper holding
+  # a junk name and fighting the real one over the same items, silently.
+  "$CONFIG_DIR/bin/sb-helper" --not-a-real-flag >/dev/null 2>&1
+  is "unknown option is rejected, not daemonised" "$?" "2"
+fi
+MROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/mic.sh"
+          card_rows 2>/dev/null )"
+nonempty "mic card emits rows" "$MROWS"
+# The privacy pane was the item's old click action; it has to survive as a row
+# or the click that used to reach it now reaches nothing.
+case "$MROWS" in
+  *Privacy_Microphone*) ok "privacy pane still reachable from the card" ;;
+  *) bad "mic card lost the privacy settings row" ;;
+esac
+# Every row must carry a glyph and text, and no action may trip card.sh's
+# metacharacter filter - an app name is free text off a filesystem path.
+MBAD=0
+while IFS="$(printf '\t')" read -r mg mc mt ma; do
+  [ -z "$mg" ] && { bad "mic row has no glyph"; MBAD=1; break; }
+  [ -z "$mt" ] && { bad "mic row has no text";  MBAD=1; break; }
+  case "$mc" in 0x*) ;; *) bad "mic row colour '$mc' not from the palette"; MBAD=1; break ;; esac
+  case "$ma" in *[\;\|\&\$\`\\\<\>\(\)]*) bad "mic action would be stripped: '$ma'"; MBAD=1; break ;; esac
+done <<MICCHK
+$MROWS
+MICCHK
+[ "$MBAD" -eq 0 ] && ok "mic rows well-formed ($(printf '%s' "$MROWS" | grep -c .) rows)"
+# The empty state must say so rather than render an unexplained bare list. A
+# stub CONFIG_DIR whose sb-helper prints nothing is the no-consumer case; the
+# real one cannot be forced to report zero while anything is capturing.
+MSTUB="$(mktemp -d)"
+mkdir -p "$MSTUB/bin" "$MSTUB/plugins" "$MSTUB/cards"
+printf '#!/bin/sh\nexit 0\n' > "$MSTUB/bin/sb-helper"; chmod +x "$MSTUB/bin/sb-helper"
+cp "$CONFIG_DIR/plugins/app_icon.sh" "$MSTUB/plugins/"
+cp "$CONFIG_DIR/cards/mic.sh" "$MSTUB/cards/"
+MEMPTY="$( set +u; source "$CONFIG_DIR/colors.sh"; CONFIG_DIR="$MSTUB"
+           source "$MSTUB/cards/mic.sh"; card_rows 2>/dev/null | head -1 | cut -f3 )"
+rm -rf "$MSTUB"
+case "$MEMPTY" in
+  *"Nothing is using the mic"*) ok "empty state names itself" ;;
+  *) bad "no-consumer path did not render the empty row (got '$MEMPTY')" ;;
+esac
+
 echo "popups fit the screen:"
 # A popup grows from its owner in the direction of popup.align, and nothing
 # stops it leaving the display. The clock found this the hard way: rightmost

@@ -8,6 +8,7 @@
 // exposed by Swift's Darwin module either, so the send half needs this include
 // even though only the register call needs the wrapper below.
 #include <bootstrap.h>
+#include <libproc.h>
 #include <mach/mach.h>
 
 int sb_bootstrap_register(mach_port_t bs_port, const char* name, mach_port_t port);

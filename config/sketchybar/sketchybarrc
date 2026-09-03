@@ -370,9 +370,18 @@ sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
 # Mic in use (hidden unless something is capturing). No update_freq and no
 # script: bin/sb-helper renders this from a CoreAudio listener, so the state
 # arrives when it changes instead of being polled every 3s.
+#
+# The click opens a card listing WHICH applications are capturing - the glyph
+# alone answers the less useful half of the question. The privacy pane the
+# click used to open is the card's last row, so nothing was lost.
 sketchybar --add item mic right \
            --set mic drawing=off \
-                     click_script="open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'"
+                     click_script="$PLUGIN_DIR/card.sh mic toggle"
+
+# align=right for the same reason as the clock: mic sits in the right cluster,
+# and app names are long enough that a left-aligned card can leave the screen.
+sketchybar --set mic "${card_popup[@]}" popup.align=right \
+           --subscribe mic mouse.exited.global
 
 # Status: bluetooth | volume | battery
 sketchybar --add item battery right \

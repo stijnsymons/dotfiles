@@ -368,13 +368,100 @@ enum Audio {
         return ids
     }
 
+    /// Who is capturing right now: one entry per process, newest API first.
+    ///
+    /// kAudioHardwarePropertyProcessObjectList (macOS 14+) is the list the
+    /// orange dot in the menu bar is derived from - an audio object per
+    /// process, each of which can be asked about INPUT specifically. That is
+    /// strictly better than asking a device, which can only ever say "somebody
+    /// is listening" and never who.
+    ///
+    /// Returns (pid, app name, bundle id). The bundle id comes straight from
+    /// CoreAudio and is what plugins/app_icon.sh matches on, so a consumer gets
+    /// its own glyph for free. The name is derived from the executable path
+    /// rather than the bundle id because the process is usually a helper:
+    /// Slack captures from
+    /// /Applications/Slack.app/Contents/Frameworks/Slack Helper.app/...,
+    /// and the FIRST .app component - "Slack" - is the answer to "which
+    /// application", not the last.
+    static func micConsumers() -> [(pid: pid_t, app: String, bundle: String)] {
+        var a = address(kAudioHardwarePropertyProcessObjectList)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
+                                             &a, 0, nil, &size) == noErr, size > 0
+        else { return [] }
+        var objs = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject),
+                                         &a, 0, nil, &size, &objs) == noErr else { return [] }
+
+        var out: [(pid: pid_t, app: String, bundle: String)] = []
+        for o in objs {
+            var running: UInt32 = 0
+            var rsize = UInt32(MemoryLayout<UInt32>.size)
+            var ra = address(kAudioProcessPropertyIsRunningInput)
+            guard AudioObjectGetPropertyData(o, &ra, 0, nil, &rsize, &running) == noErr,
+                  running == 1
+            else { continue }
+
+            var p: pid_t = -1
+            var psize = UInt32(MemoryLayout<pid_t>.size)
+            var pa = address(kAudioProcessPropertyPID)
+            guard AudioObjectGetPropertyData(o, &pa, 0, nil, &psize, &p) == noErr, p > 0
+            else { continue }
+
+            var bundle = ""
+            var bref: Unmanaged<CFString>?
+            var bsize = UInt32(MemoryLayout<CFString?>.size)
+            var ba = address(kAudioProcessPropertyBundleID)
+            if AudioObjectGetPropertyData(o, &ba, 0, nil, &bsize, &bref) == noErr,
+               let s = bref?.takeRetainedValue() {
+                bundle = s as String
+            }
+            out.append((pid: p, app: appName(forPID: p, bundle: bundle), bundle: bundle))
+        }
+        // Stable order, so the card does not reshuffle between opens.
+        return out.sorted { $0.app.lowercased() < $1.app.lowercased() }
+    }
+
+    /// proc_pidpath rather than NSRunningApplication: this file links CoreAudio
+    /// and SystemConfiguration, and pulling AppKit in for one localised name
+    /// would add its dylib load to a process that starts on every login.
+    private static func appName(forPID p: pid_t, bundle: String) -> String {
+        // 4096 == PROC_PIDPATHINFO_MAXSIZE, which is a macro in sys/proc_info.h
+        // and so invisible to Swift even with libproc.h in the bridging header.
+        var buf = [CChar](repeating: 0, count: 4096)
+        if proc_pidpath(p, &buf, UInt32(buf.count)) > 0 {
+            let path = String(cString: buf)
+            for part in path.split(separator: "/") where part.hasSuffix(".app") {
+                return String(part.dropLast(4))
+            }
+            if let last = path.split(separator: "/").last { return String(last) }
+        }
+        // A daemon with no bundle and an unreadable path still has to say
+        // something; the bundle id beats a bare number.
+        return bundle.isEmpty ? "pid \(p)" : bundle
+    }
+
     /// True only while something actually captures.
     ///
-    /// The scope matters and is the bug bin/mic-active.swift was fixed for:
+    /// Derived from micConsumers() when that list is available, so the item and
+    /// its card can never disagree about whether the mic is live. The
+    /// device-scope check below is the fallback for an OS without the process
+    /// list, and is itself the bug bin/mic-active.swift was fixed for:
     /// kAudioDevicePropertyDeviceIsRunningSomewhere on the GLOBAL scope is
     /// device-wide, so AirPods merely *playing* read as capturing and the red
     /// indicator burned all day. Asked on the INPUT scope it means what it says.
     static func micActive() -> Bool {
+        var a = address(kAudioHardwarePropertyProcessObjectList)
+        var probe: UInt32 = 0
+        if AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject),
+                                          &a, 0, nil, &probe) == noErr, probe > 0 {
+            return !micConsumers().isEmpty
+        }
+        return micActiveByDevice()
+    }
+
+    static func micActiveByDevice() -> Bool {
         for dev in devices() {
             var size = UInt32(0)
             var streams = address(kAudioDevicePropertyStreams, kAudioDevicePropertyScopeInput)
@@ -775,6 +862,11 @@ func selfTest() -> Never {
 
     out.append("human=\(humanRate(0))/\(humanRate(2048))/\(humanRate(5_242_880))/\(humanRate(209_715_200))")
     out.append("mic=\(Audio.micActive() ? 1 : 0)")
+    // The count must agree with the flag or the item and its card contradict
+    // each other - "mic in use" over a card saying nothing is capturing.
+    let consumers = Audio.micConsumers()
+    out.append("mic_consumers=\(consumers.count)")
+    out.append("mic_agree=\((Audio.micActive() == !consumers.isEmpty) ? 1 : 0)")
     if let v = Audio.volume(), (0...100).contains(v) { out.append("volume=\(v)") }
     else { out.append("volume=NONE") }  // aggregate devices expose no scalar
     out.append("muted=\(Audio.muted() ? 1 : 0)")
@@ -797,6 +889,29 @@ setvbuf(stdout, nil, _IONBF, 0)
 
 let argv = Array(CommandLine.arguments.dropFirst())
 if argv.contains("--selftest") { selfTest() }
+
+// cards/mic.sh asks the same binary that renders the item, so the card cannot
+// name a consumer the item disagrees about. Tab-separated because that is the
+// row format card.sh already parses; the app name is free text from a path, so
+// the card still runs it through card_text.
+if argv.contains("--mic-consumers") {
+    for c in Audio.micConsumers() {
+        print("\(c.pid)\t\(c.app)\t\(c.bundle)")
+    }
+    exit(0)
+}
+
+// Anything left starting with "--" is a typo, not a bootstrap name. Without
+// this check `sb-helper --mic-consumer` (singular) registered "--mic-consumer"
+// and daemonised: a second helper holding a junk name, running timers and
+// fighting the real one over the same items, with nothing on stdout. Exit
+// loudly instead - a daemon is what this binary does by DEFAULT, so every
+// unrecognised flag has to be rejected explicitly.
+if let bad = argv.first(where: { $0.hasPrefix("--") }) {
+    FileHandle.standardError.write(Data(
+        "sb-helper: unknown option \(bad)\nusage: sb-helper [<bootstrap-name>] | --selftest | --mic-consumers\n".utf8))
+    exit(2)
+}
 
 let bootstrapName = argv.first ?? "git.felix.sbhelper"
 
