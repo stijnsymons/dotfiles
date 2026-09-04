@@ -1,0 +1,112 @@
+# Hyprspace starter config.
+#
+# This file is intentionally small. Hyprspace already provides opinionated built-in
+# defaults for the dwindle-friendly layout behavior, so this file only contains the
+# first shortcuts new users are likely to want immediately.
+#
+# For a fuller reference config, see: ~/.config/hyprspace/docs/default-config.toml
+# For path rules, see: ~/.config/hyprspace/docs/README.md
+# For all available config options and commands, see:
+# https://nikitabobko.github.io/AeroSpace/guide
+# https://nikitabobko.github.io/AeroSpace/commands
+
+config-version = 2
+start-at-login = true
+
+after-startup-command = [
+    'exec-and-forget borders active_color=0xff50bfcb inactive_color=0xff414550 width=8.0 hidpi=off',
+]
+
+exec-on-workspace-change = [
+    '/bin/bash',
+    '-lc',
+    'sketchybar --trigger hyprspace_workspace_change FOCUSED_WORKSPACE=$AEROSPACE_FOCUSED_WORKSPACE PREV_WORKSPACE=$AEROSPACE_PREV_WORKSPACE',
+]
+
+[gaps]
+inner.horizontal = 12
+inner.vertical = 12
+outer.left = 12
+outer.right = 12
+outer.bottom = 12
+outer.top = [{ monitor."built-in" = 18 }, { monitor."main" = 48 }, 48]
+
+# ---------- MAIN KEY BINDINGS -----------
+
+[mode.main.binding]
+alt-enter = 'new-window-or-open Ghostty'
+# 'Brave', not 'Brave Browser', is what this said - new-window-or-open shells
+# out to `open -a <name>`, which exited 1 on the short name and left alt-b
+# doing nothing at all. The bundle is /Applications/Brave Browser.app.
+alt-b = 'new-window-or-open "Brave Browser"'
+
+# alt-enter and alt-b above stay on new-window-or-open: another terminal or
+# another browser window is exactly what those two are for. The four below jump
+# to a window that already exists instead - alt-t is the counterpart to
+# alt-enter (go to the terminal, rather than make one), and the other three are
+# single-window apps where new-window-or-open only ever handed back a duplicate
+# of what was already on screen. bin/focus-or-open.sh focuses the existing
+# window wherever it is, and only launches when there is none.
+alt-t = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.mitchellh.ghostty'
+alt-o = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh md.obsidian'
+alt-s = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.tinyspeck.slackmacgap'
+alt-m = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.spotify.client'
+
+alt-shift-p = 'open-terminal Ghostty btop'
+
+alt-1 = 'workspace 1'
+alt-2 = 'workspace 2'
+alt-3 = 'workspace 3'
+alt-4 = 'workspace 4'
+
+alt-shift-1 = 'move-node-to-workspace 1'
+alt-shift-2 = 'move-node-to-workspace 2'
+alt-shift-3 = 'move-node-to-workspace 3'
+alt-shift-4 = 'move-node-to-workspace 4'
+
+alt-h = 'focus left'
+alt-j = 'focus down'
+alt-k = 'focus up'
+alt-l = 'focus right'
+
+alt-shift-h = 'move left'
+alt-shift-j = 'move down'
+alt-shift-k = 'move up'
+alt-shift-l = 'move right'
+
+alt-tab = 'focus-back-and-forth'
+alt-shift-space = 'layout floating tiling'
+alt-shift-s = 'mode service'
+alt-shift-slash = 'layout tiles horizontal vertical'
+alt-shift-comma = 'layout accordion horizontal vertical'
+alt-minus = 'resize smart -50'
+alt-equal = 'resize smart +50'
+alt-f = 'fullscreen'
+alt-cmd-f = 'macos-native-fullscreen'
+
+# ---------- SERVICE MODE -----------
+
+[mode.service.binding]
+esc = ['reload-config', 'mode main']
+r = ['flatten-workspace-tree', 'mode main']
+f = ['layout floating tiling', 'mode main']
+alt-shift-s = 'mode main'
+
+# ---------- WINDOW CONTROL -----------
+
+[[on-window-detected]]
+if.app-id = "com.apple.ScreenSharing"
+run = ["layout floating"]
+
+[[on-window-detected]]
+if.app-id = "com.apple.MobileSMS"
+run = ["layout floating"]
+
+# [[on-window-detected]]
+# if.app-id = 'com.tinyspeck.slackmacgap'
+# run = ['layout floating']
+
+# [[on-window-detected]]
+# if.app-id = "com.microsoft.teams2"
+# run = ["layout floating"]
+

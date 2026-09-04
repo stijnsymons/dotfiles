@@ -1,0 +1,5 @@
+# Written by hyprspace itself, not configuration.
+.wallpaper-backup
+
+# Shipped with the app and rewritten on upgrade: reference, not config.
+docs/
