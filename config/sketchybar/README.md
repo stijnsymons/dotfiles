@@ -97,19 +97,30 @@ Restart with `brew services restart sketchybar` after granting.
 
 ## Layout
 
-**Left** —  power menu · focused app · herdr flock (agent count per state:
-red blocked / blue working / green done / dim idle; click for the card, a row
-click focuses that agent) · current meeting · productive timer
+**Left** —  power menu · focused app · hyprspace workspaces (four pips,
+cyan pill on the focused one, bright if it holds windows, dim if empty; click
+to switch) · herdr flock (agent count per state: red blocked / blue working /
+green done / dim idle; click for the card, a row click focuses that agent) ·
+current meeting · productive timer
 **Right** — now playing · CPU / memory · network (stacked ↑/↓) + Wi-Fi ·
 Bluetooth / volume / battery · mic-in-use · clock
 
-Interactive: click volume to mute (scroll to change), Bluetooth to toggle power,
+Interactive: click a workspace pip to switch to it (the same thing `alt-<n>`
+does), volume to mute (scroll to change), Bluetooth to toggle power,
 now-playing to play/pause, CPU/memory for Activity Monitor, clock for the ISO
 week + this week's hours + jump-offs to the calendar, timesheet and Focus note,
 Wi-Fi and battery for their Settings panes, mic for the privacy pane.
 
-The mic indicator is hidden unless something is actually capturing, and the
-now-playing item hides itself when nothing is playing.
+The mic indicator is hidden unless something is actually capturing, the
+now-playing item hides itself when nothing is playing, and the workspace pips
+hide themselves if the hyprspace server is not up.
+
+The pips come from `hyprspace` (an AeroSpace fork) and cover the workspaces
+bound in `~/.config/hyprspace/config.toml` — `$SPACE_IDS` in `colors.sh` is the
+one place that set is named. That config's `exec-on-workspace-change` is what
+triggers `hyprspace_workspace_change` on the bar; without it the pips only
+repaint on the catch-up events, so a switch to an empty workspace would leave
+the pill behind. `check.sh` asserts both.
 
 ## Customising
 

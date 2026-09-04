@@ -1037,6 +1037,61 @@ case "${PS_W:-0}" in
     done ;;
 esac
 
+echo "hyprspace workspaces:"
+# The pips claim to be a legend for alt-1..alt-4, and the click claims to mean
+# the same thing as the keystroke. Both are only true while config.toml agrees,
+# and that file is edited independently of this repo's bar - so assert the
+# agreement rather than the comment.
+HS_CONF="$HOME/.config/hyprspace/config.toml"
+if [ ! -r "$HS_CONF" ]; then
+  bad "hyprspace config unreadable at $HS_CONF"
+else
+  for sid in $SPACE_IDS; do
+    grep -Eq "^alt-$sid[[:space:]]*=[[:space:]]*'workspace $sid'" "$HS_CONF" \
+      && ok "alt-$sid switches to workspace $sid" \
+      || bad "alt-$sid is not bound to 'workspace $sid' in config.toml"
+  done
+  # Without this callback the pips only repaint on the catch-up events
+  # (front_app_switched, space_windows_change), so a switch that opens no window
+  # and changes no app - alt-3 to an empty workspace - would leave the pill
+  # behind on the workspace you left.
+  grep -q 'sketchybar --trigger hyprspace_workspace_change' "$HS_CONF" \
+    && ok "workspace change reaches the bar" \
+    || bad "config.toml does not trigger hyprspace_workspace_change"
+fi
+
+# Item set and paint set, same drift guard as the card rows: sketchybarrc
+# creates one pip per id and the plugin addresses one pip per id, both out of
+# $SPACE_IDS, so a fifth workspace is wired in by editing colors.sh alone.
+SB_ITEMS="$(sketchybar --query bar 2>/dev/null | jq -r '.items[]')"
+for sid in $SPACE_IDS; do
+  printf '%s\n' "$SB_ITEMS" | grep -qx "space.$sid" \
+    && ok "space.$sid exists" || bad "space.$sid missing from the bar"
+done
+printf '%s\n' "$SB_ITEMS" | grep -qx "space_watch" \
+  && ok "space_watch paints them" || bad "space_watch missing from the bar"
+
+# The live paint. Exactly one pill, on the workspace hyprspace says is focused:
+# two pills means a repaint that only ever turned one on, none means the
+# cluster is showing you nothing at all.
+HS_FOCUSED="$(hyprspace list-workspaces --focused 2>/dev/null)"
+if [ -z "$HS_FOCUSED" ]; then
+  ok "hyprspace not running, skipping the live paint"
+else
+  HS_PILLS=""
+  for sid in $SPACE_IDS; do
+    [ "$(sketchybar --query "space.$sid" 2>/dev/null | jq -r '.geometry.background.drawing')" = "on" ] \
+      && HS_PILLS="$HS_PILLS$sid"
+  done
+  case "$HS_FOCUSED" in
+    # A workspace past the bound four is reachable by moving a window there, and
+    # then no pip is the right one to light up.
+    [1-9]*) printf '%s\n' "$SPACE_IDS" | grep -qw "$HS_FOCUSED" \
+              && is "the pill is on the focused workspace" "$HS_PILLS" "$HS_FOCUSED" \
+              || is "focused workspace $HS_FOCUSED is off the cluster, no pill" "$HS_PILLS" "" ;;
+  esac
+fi
+
 echo "deps:"
 # timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its
 # hang watchdog without it, and gws is the calendar itself - a missing one

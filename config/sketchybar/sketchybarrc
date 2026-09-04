@@ -261,6 +261,65 @@ sketchybar --add item front_app left \
                            script="$PLUGIN_DIR/front_app.sh" \
            --subscribe front_app front_app_switched
 
+##### Left: hyprspace workspaces #####
+# Four pips for the four workspaces alt-1..alt-4 reach. Sits between front_app
+# and the herdr flock: "which app" and "which workspace" read together in one
+# glance. The pips are fixed-width - all four are always drawn, occupancy is
+# carried in the colour - so nothing to their right shuffles as workspaces
+# fill and empty; only front_app ahead of them moves, which meeting and
+# productive already fit themselves against every tick.
+#
+# Digits rather than dots or app icons: the digit IS the keystroke, so the pip
+# is a legend for alt-1..alt-4 as much as it is a state readout. Icon-only and
+# tight padding keeps the whole cluster to 93pt with its rule, which is what
+# the left cluster can spare before fit.sh takes it out of the meeting label.
+sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
+
+# No script and no update_freq on the pips themselves - space_watch below owns
+# the paint for all four. background is configured here but left off; the
+# plugin only ever flips drawing, so the pill's geometry cannot drift between
+# the four items.
+spaces_args=()
+for sid in $SPACE_IDS; do
+  spaces_args+=(--add item "space.$sid" left
+                --set "space.$sid" icon="$sid"
+                                   icon.font="$FONT_TEXT:Bold:$SZ_LABEL"
+                                   icon.color="$FG_DIM"
+                                   icon.padding_left=6
+                                   icon.padding_right=6
+                                   label.drawing=off
+                                   padding_left=1
+                                   padding_right=1
+                                   background.color="$SEPARATOR"
+                                   background.corner_radius=4
+                                   background.height=20
+                                   background.drawing=off
+                                   click_script="$PLUGIN_DIR/hyprspace_workspace.sh focus $sid")
+done
+sketchybar "${spaces_args[@]}"
+
+# hyprspace fires this on every switch, with the new workspace in the payload
+# (exec-on-workspace-change in ~/.config/hyprspace/config.toml). Declared here
+# because a custom event has to exist before anything can subscribe to it.
+sketchybar --add event hyprspace_workspace_change
+
+# Zero-width item that paints all four pips, same shape as display_watch and
+# card_watch on the right. space_windows_change is what keeps the occupied /
+# empty shading honest - it fires whenever any app anywhere opens or closes a
+# window, which is exactly the question being asked here (it is excluded from
+# $CARD_AWAY_EVENTS for the opposite reason: it is not a click).
+# front_app_switched and system_woke are the cheap catch-ups for anything that
+# moved a window without either event landing.
+sketchybar --add item space_watch left \
+           --set space_watch drawing=off \
+                             icon.drawing=off \
+                             label.drawing=off \
+                             script="$PLUGIN_DIR/hyprspace_workspace.sh" \
+           --subscribe space_watch hyprspace_workspace_change \
+                                   space_windows_change \
+                                   front_app_switched \
+                                   system_woke
+
 # Herdr flock: the agents the herdr session is running, one coloured digit per
 # state (plugins/herdr.sh renders, cards/herdr.sh details, click toggles the
 # card). Sits between front_app and meeting on purpose: meeting and productive
