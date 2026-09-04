@@ -1,0 +1,3 @@
+# Karabiner snapshots karabiner.json here on every change it makes itself.
+# State, not configuration.
+automatic_backups/

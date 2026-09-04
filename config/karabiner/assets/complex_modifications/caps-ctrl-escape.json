@@ -1,0 +1,19 @@
+{
+  "title": "Caps Lock",
+  "rules": [
+    {
+      "description": "Caps Lock -> Control on hold, Escape on tap",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": {
+            "key_code": "caps_lock",
+            "modifiers": { "optional": ["any"] }
+          },
+          "to": [{ "key_code": "left_control" }],
+          "to_if_alone": [{ "key_code": "escape" }]
+        }
+      ]
+    }
+  ]
+}
