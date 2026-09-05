@@ -26,10 +26,10 @@ exec-on-workspace-change = [
 [gaps]
 inner.horizontal = 12
 inner.vertical = 12
-outer.left = 12
-outer.right = 12
-outer.bottom = 12
-outer.top = [{ monitor."built-in" = 18 }, { monitor."main" = 48 }, 48]
+outer.left = 9
+outer.right = 9
+outer.bottom = 9
+outer.top = [{ monitor."built-in" = 9 }, { monitor."main" = 9 }, 9]
 
 # ---------- MAIN KEY BINDINGS -----------
 
@@ -50,7 +50,11 @@ alt-b = 'new-window-or-open "Brave Browser"'
 alt-t = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.mitchellh.ghostty'
 alt-o = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh md.obsidian'
 alt-s = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.tinyspeck.slackmacgap'
-alt-m = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.spotify.client'
+# Spotify is on alt-p, not the obvious alt-m: Wispr Flow holds Option+M for its
+# meeting recorder. macOS global hotkeys are exclusive and first-come-first-
+# served, Wispr starts at login and wins, and the losing registration fails
+# silently - so alt-m here looked bound and did nothing but start a notetaker.
+alt-p = 'exec-and-forget ~/.config/hyprspace/bin/focus-or-open.sh com.spotify.client'
 
 alt-shift-p = 'open-terminal Ghostty btop'
 
@@ -58,11 +62,13 @@ alt-1 = 'workspace 1'
 alt-2 = 'workspace 2'
 alt-3 = 'workspace 3'
 alt-4 = 'workspace 4'
+alt-5 = 'workspace 5'
 
 alt-shift-1 = 'move-node-to-workspace 1'
 alt-shift-2 = 'move-node-to-workspace 2'
 alt-shift-3 = 'move-node-to-workspace 3'
 alt-shift-4 = 'move-node-to-workspace 4'
+alt-shift-5 = 'move-node-to-workspace 5'
 
 alt-h = 'focus left'
 alt-j = 'focus down'
