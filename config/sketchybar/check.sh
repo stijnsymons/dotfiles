@@ -61,20 +61,6 @@ else
   bad "bin/mic-active not built (swiftc -O -o bin/mic-active bin/mic-active.swift)"
 fi
 
-echo "power.sh:"
-# Assert the real bytes: a grep for the literal matches an EMPTY icon="" too,
-# which is exactly how a dropped glyph passed this check before.
-WANT="$(printf '\357\205\271' | xxd -p)"
-GOT="$(sketchybar --query power 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
-is "apple glyph U+F179 bytes" "$GOT" "$WANT"
-# Ask the script which actions it handles rather than grepping its case arms:
-# the old grep pinned the indentation of every arm, so reformatting power.sh
-# failed this suite with zero behaviour change.
-PACT="$("$CONFIG_DIR/plugins/power.sh" --list-actions 2>/dev/null)"
-for a in toggle close about settings appstore force lock sleep logout restart shutdown; do
-  printf '%s\n' "$PACT" | grep -qx "$a" && ok "action $a" || bad "action $a missing"
-done
-
 echo "layout vs notch:"
 read -r M_TOP M_NL M_NR _ <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
 BAR_H="$(sketchybar --query bar 2>/dev/null | jq -r '.height')"
@@ -237,7 +223,7 @@ rm -rf "$MEET_TMP"
 echo "caffeine:"
 [ -x "$CONFIG_DIR/plugins/caffeine.sh" ] && ok "renderer executable" || bad "plugins/caffeine.sh not executable"
 [ -x "$CONFIG_DIR/plugins/caffeine_click.sh" ] && ok "click handler executable" || bad "plugins/caffeine_click.sh not executable"
-# Byte-level, like the power glyph check: a grep for the literal matches a dropped glyph too.
+# Byte-level: a grep for the literal matches a dropped glyph (icon="") too.
 CWANT="$(printf '\363\260\205\266' | xxd -p)"
 CGOT="$(sketchybar --query caffeine 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
 is "coffee glyph U+F0176 bytes" "$CGOT" "$CWANT"
@@ -814,7 +800,7 @@ FHIDDEN="$(fit_label definitely_not_an_item "$FLONG")"
                           || bad "fit_label passed 300 chars through for an unlaid-out item"
 
 echo "herdr:"
-# Byte-level glyph check, like power and caffeine: a dropped plane-15 glyph
+# Byte-level glyph check, like caffeine: a dropped plane-15 glyph
 # renders as a blank box with no other symptom.
 HWANT="$(printf '\363\260\263\206' | xxd -p)"
 HGOT="$(sketchybar --query herdr 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"

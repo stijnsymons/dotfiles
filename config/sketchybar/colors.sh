@@ -65,13 +65,14 @@ export SB_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
 card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 
 # The hyprspace workspaces the bar draws a pip for, and the only ones
-# ~/.config/hyprspace/config.toml binds (alt-1..alt-4). hyprspace auto-creates
+# ~/.config/hyprspace/config.toml binds (alt-1..alt-5). hyprspace auto-creates
 # a further workspace when a window is sent past the last bound one, so this is
 # a deliberate window onto the ones you can actually reach by keyboard, not a
 # mirror of everything that exists. sketchybarrc creates the pips,
 # plugins/hyprspace_workspace.sh paints them and check.sh asserts both - naming
-# the set once is what stops those three from drifting apart.
-export SPACE_IDS="1 2 3 4"
+# the set once is what stops those three from drifting apart, and is the only
+# edit a sixth workspace needs on this side.
+export SPACE_IDS="1 2 3 4 5"
 
 # The items that own a hover card, and how many rows each one has room for.
 # sketchybarrc pre-creates the rows, card.sh closes the others when one opens

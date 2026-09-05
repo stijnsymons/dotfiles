@@ -97,9 +97,9 @@ Restart with `brew services restart sketchybar` after granting.
 
 ## Layout
 
-**Left** —  power menu · focused app · hyprspace workspaces (four pips,
-cyan pill on the focused one, bright if it holds windows, dim if empty; click
-to switch) · herdr flock (agent count per state: red blocked / blue working /
+**Left** — hyprspace workspaces (five pips, cyan pill on the focused one,
+bright if it holds windows, dim if empty; click to switch) · focused app ·
+herdr flock (agent count per state: red blocked / blue working /
 green done / dim idle; click for the card, a row click focuses that agent) ·
 current meeting · productive timer
 **Right** — now playing · CPU / memory · network (stacked ↑/↓) + Wi-Fi ·

@@ -186,99 +186,27 @@ card_rows_for() { # card_rows_for <item>
   sketchybar "${args[@]}"
 }
 
-##### Left: power menu | focused app #####
-
-# Power menu. Items are added to the popup via the "popup.power" position.
-sketchybar --add item power left \
-           --set power icon="$(printf '\357\205\271')" \
-                       icon.color="$FG" \
-                       icon.font="$FONT_ICON:Bold:18.0" \
-                       label.drawing=off \
-                       popup.background.color="$POPUP_BG" \
-                       popup.background.corner_radius=6 \
-                       popup.background.border_width=1 \
-                       popup.background.border_color="$SEPARATOR" \
-                       popup.background.shadow.drawing=on \
-                       popup.horizontal=off \
-                       popup.height=28 \
-                       popup.align=left \
-                       popup.y_offset=-4 \
-                       click_script="$PLUGIN_DIR/power.sh toggle" \
-                       script="$PLUGIN_DIR/power.sh close" \
-           --subscribe power mouse.exited.global
-
-# No icon.width / label.width here: the popup already normalises every row to
-# the widest one, and a fixed icon.width includes icon.padding_left, so it eats
-# the icon->label gap and leaves the glyph flush against the text.
-power_row=(
-  label.align=left
-  icon.padding_left=12
-  icon.padding_right=10
-  label.padding_left=0
-  label.padding_right=14
-  background.drawing=off
-)
-
-# Rows accumulate and go out in a single call after the last one, same reason
-# as card_rows_for above. Popup order is the order items are added, so the
-# divider is appended into the same array in its place rather than sent early.
-power_args=()
-row() { # row() <name> <glyph> <color> <label> <action>
-  power_args+=(--add item "power.$1" popup.power
-               --set "power.$1" "${power_row[@]}" icon="$2" icon.color="$3" label="$4"
-                                click_script="$PLUGIN_DIR/power.sh $5")
-}
-
-row about    "󰋽" "$BLUE"   "About This Mac"  about
-row settings "󰒓" "$AQUA"   "System Settings" settings
-row appstore "󰟉" "$VIOLET" "App Store"       appstore
-row force    "󰅚" "$PINK"   "Force Quit"      force
-
-# Divider between the "open something" rows and the destructive ones.
-power_args+=(--add item power.div popup.power
-             --set power.div icon="────────────"
-                             icon.font="$FONT_TEXT:Regular:10.0"
-                             icon.color="$SEPARATOR"
-                             icon.padding_left=12
-                             label.drawing=off
-                             background.drawing=off
-                             click_script="$PLUGIN_DIR/power.sh close")
-
-row lock     "󰌾" "$BLUE"   "Lock"      lock
-row sleep    "󰒲" "$VIOLET" "Sleep"     sleep
-row logout   "󰍃" "$YELLOW" "Log Out"   logout
-row restart  "󰜉" "$ORANGE" "Restart"   restart
-row shutdown "󰐥" "$RED"    "Shut Down" shutdown
-
-sketchybar "${power_args[@]}"
-
-sketchybar --add item sep.power left --set sep.power "${separator[@]}"
-
-sketchybar --add item front_app left \
-           --set front_app icon.color="$PINK" \
-                           label.max_chars=25 \
-                           label.font="$FONT_TEXT:Regular:13.0" \
-                           script="$PLUGIN_DIR/front_app.sh" \
-           --subscribe front_app front_app_switched
-
-##### Left: hyprspace workspaces #####
-# Four pips for the four workspaces alt-1..alt-4 reach. Sits between front_app
-# and the herdr flock: "which app" and "which workspace" read together in one
-# glance. The pips are fixed-width - all four are always drawn, occupancy is
-# carried in the colour - so nothing to their right shuffles as workspaces
-# fill and empty; only front_app ahead of them moves, which meeting and
-# productive already fit themselves against every tick.
+##### Left: hyprspace workspaces | focused app #####
+# Five pips for the five workspaces alt-1..alt-5 reach, leftmost on the bar, so
+# "which workspace" then "which app" reads left to right in one glance.
+#
+# The pips are fixed-width - all four are always drawn, occupancy is carried in
+# the colour - which makes them a stable anchor for everything to their right:
+# nothing shuffles sideways as workspaces fill and empty. front_app behind them
+# still varies, and meeting and productive already fit themselves against that
+# every tick.
 #
 # Digits rather than dots or app icons: the digit IS the keystroke, so the pip
-# is a legend for alt-1..alt-4 as much as it is a state readout. Icon-only and
-# tight padding keeps the whole cluster to 93pt with its rule, which is what
-# the left cluster can spare before fit.sh takes it out of the meeting label.
-sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
-
+# is a legend for alt-1..alt-5 as much as it is a state readout. Icon-only and
+# tight padding keeps the whole cluster to 114pt with its rule - 21pt per pip,
+# so a further workspace is affordable: the left cluster ends at 474 against a
+# notch starting at 918 on the built-in display, and fit.sh takes any shortfall
+# out of the meeting label rather than overrunning.
+#
 # No script and no update_freq on the pips themselves - space_watch below owns
-# the paint for all four. background is configured here but left off; the
+# the paint for all of them. background is configured here but left off; the
 # plugin only ever flips drawing, so the pill's geometry cannot drift between
-# the four items.
+# the items.
 spaces_args=()
 for sid in $SPACE_IDS; do
   spaces_args+=(--add item "space.$sid" left
@@ -303,7 +231,7 @@ sketchybar "${spaces_args[@]}"
 # because a custom event has to exist before anything can subscribe to it.
 sketchybar --add event hyprspace_workspace_change
 
-# Zero-width item that paints all four pips, same shape as display_watch and
+# Zero-width item that paints every pip, same shape as display_watch and
 # card_watch on the right. space_windows_change is what keeps the occupied /
 # empty shading honest - it fires whenever any app anywhere opens or closes a
 # window, which is exactly the question being asked here (it is excluded from
@@ -319,6 +247,18 @@ sketchybar --add item space_watch left \
                                    space_windows_change \
                                    front_app_switched \
                                    system_woke
+
+# Rule between the workspace cluster and the focused app. hyprspace_workspace.sh
+# hides it alongside the pips when the window manager is not up, so a hidden
+# cluster never leaves a rule dangling against the bar's left edge.
+sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
+
+sketchybar --add item front_app left \
+           --set front_app icon.color="$PINK" \
+                           label.max_chars=25 \
+                           label.font="$FONT_TEXT:Regular:13.0" \
+                           script="$PLUGIN_DIR/front_app.sh" \
+           --subscribe front_app front_app_switched
 
 # Herdr flock: the agents the herdr session is running, one coloured digit per
 # state (plugins/herdr.sh renders, cards/herdr.sh details, click toggles the
