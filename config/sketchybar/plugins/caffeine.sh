@@ -60,6 +60,8 @@ if [ -z "${CAFFEINE_LIB:-}" ]; then
   # on a caller that did not ask for it is exactly what a sourced file must not
   # do. The definitions above are set-u-clean either way.
   set -u
-  card_dispatch caffeine
+  # No card_dispatch: the click is a direct toggle now, so this item owns no
+  # popup to close and is not in $CARD_ITEMS. All this tick does is re-validate
+  # the PID and repaint, which is what catches a caffeinate killed from outside.
   caffeine_render
 fi

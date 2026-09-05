@@ -125,8 +125,16 @@ while IFS=$'\t' read -r GLYPH COLOR TEXT ACTION; do
   # Every row dismisses the card; a row with an action runs it first.
   CLICK="$CONFIG_DIR/plugins/card.sh $ITEM close"
   [ -n "$ACTION" ] && CLICK="$ACTION; $CLICK"
+  # label.color as well as icon.color, and this was a real bug for a long time.
+  # A row's colour field only ever tinted the GLYPH; the text took its colour
+  # from sketchybarrc's --default, which is $FG for every row of every card. So
+  # a card writing $FG_DIM for a sub-line, or $RED for something urgent, got a
+  # correctly coloured 12pt glyph and a paragraph of identical foreground text -
+  # the whole visual hierarchy the cards were written for silently did nothing.
+  # Nothing had to change in any card for this to take effect, which is also why
+  # it went unnoticed: every card was already passing the right colour.
   ROW_ARGS+=(--set "$ITEM.pop.$N" drawing=on icon="$GLYPH" icon.color="$COLOR"
-                   label="$(ellipsize "$TEXT" "$MAX_CHARS")"
+                   label="$(ellipsize "$TEXT" "$MAX_CHARS")" label.color="$COLOR"
                    click_script="$CLICK")
   N=$(( N + 1 ))
 done <<CARDEOF

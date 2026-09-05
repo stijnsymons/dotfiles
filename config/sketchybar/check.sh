@@ -4,7 +4,6 @@ set -u
 export CONFIG_DIR="${CONFIG_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/app_icon.sh"
-source "$CONFIG_DIR/plugins/sys_lib.sh"
 fail=0
 ok()   { printf '  ok   %s\n' "$1"; }
 bad()  { printf '  FAIL %s\n' "$1"; fail=1; }
@@ -18,13 +17,6 @@ nonempty "bundle id"   "$(app_icon com.mitchellh.ghostty)"
 nonempty "unknown app" "$(app_icon "Totally Fake App")"
 is "distinct glyphs" "$([ "$(app_icon Slack)" != "$(app_icon Ghostty)" ] && echo yes)" yes
 
-echo "system.sh readings:"
-# The helpers themselves, not a hand-copied pipeline: the old copy asserted a
-# `top` sampling loop the plugin had already stopped using, so it kept passing
-# while measuring nothing the bar runs - and cost this suite 1.7s a go.
-pct "cpu" "$(cpu_pct)"
-pct "mem" "$(mem_pct)"
-
 echo "battery.sh parse:"
 pct "battery" "$(pmset -g batt | grep -Eo '[0-9]+%' | head -1 | tr -d '%')"
 
@@ -33,13 +25,6 @@ WIFI_IF="$(networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}'
 nonempty "wifi interface" "$WIFI_IF"
 # SSID is legitimately empty when not associated, so only assert it does not error.
 ipconfig getsummary "${WIFI_IF:-en0}" >/dev/null 2>&1 && ok "ipconfig getsummary" || bad "ipconfig getsummary failed"
-
-echo "network.sh parse:"
-NET_IF="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')"
-nonempty "default interface" "$NET_IF"
-read -r RX TX <<<"$(netstat -ibn -I "${NET_IF:-en0}" | awk 'NR>1 {print $(NF-4), $(NF-1); exit}')"
-[ "${RX:-x}" -ge 0 ] 2>/dev/null && ok "rx counter = $RX" || bad "rx counter not an int (got '$RX')"
-[ "${TX:-x}" -ge 0 ] 2>/dev/null && ok "tx counter = $TX" || bad "tx counter not an int (got '$TX')"
 
 echo "bin/ helpers:"
 # build.sh keeps the last working binary and leaves the compiler's reason in a
@@ -60,6 +45,35 @@ if [ -x "$CONFIG_DIR/bin/mic-active" ]; then
 else
   bad "bin/mic-active not built (swiftc -O -o bin/mic-active bin/mic-active.swift)"
 fi
+
+echo "app menu:"
+# There is no glyph assertion here any more. This hung off a dedicated  item
+# whose only job was to carry U+F179, and the byte-level check existed because a
+# grep for the literal also matches an EMPTY icon="". The menu moved onto
+# front_app, whose icon is the focused app's own glyph and changes on every
+# switch - there is no fixed byte string left to assert.
+[ -x "$CONFIG_DIR/plugins/app_menu.sh" ] && ok "click handler executable" \
+                                         || bad "plugins/app_menu.sh not executable"
+# The click has to actually be wired to it. front_app carries a script AND a
+# click_script and only the latter opens the menu, so a config that drops the
+# click_script leaves an item that still paints correctly and silently does
+# nothing when clicked - which is precisely the bug that is easy to miss.
+sketchybar --query front_app 2>/dev/null | jq -e --arg h "$CONFIG_DIR/plugins/app_menu.sh" \
+  '.click_script | test($h)' >/dev/null \
+  && ok "front_app click opens the app menu" \
+  || bad "front_app has no click_script pointing at app_menu.sh"
+# --print, never the handler itself: a real invocation drops a modal NSMenu
+# over the rest of this suite, and omniwmctl BLOCKS on a second one while the
+# first is tracking. The seam names the command instead of running it.
+AM_CMD="$("$CONFIG_DIR/plugins/app_menu.sh" --print 2>/dev/null)"
+is "handler drives omniwm's open-menu-anywhere" "$AM_CMD" "omniwmctl command open-menu-anywhere"
+# Drift guard on the other side of that contract: the click is silent when
+# omniwm renames or drops the command, because the handler only prints its
+# complaint to a stderr nobody reads. `omniwmctl help` is local usage text, so
+# this holds whether or not omniwm is running - unlike the ipc probe further down.
+omniwmctl help 2>&1 | grep -qF -- "$AM_CMD" \
+  && ok "omniwm still exposes the command" \
+  || bad "omniwmctl no longer lists '$AM_CMD' - the app menu click is a no-op"
 
 echo "layout vs notch:"
 read -r M_TOP M_NL M_NR _ <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
@@ -101,41 +115,6 @@ case "$MG" in
   "")    ok "media hidden (nothing playing)" ;;
   *)     bad "unexpected media glyph bytes: $MG" ;;
 esac
-
-echo "system stack:"
-YC="$(sketchybar --query cpu 2>/dev/null | jq -r '.geometry.y_offset')"
-YM="$(sketchybar --query mem 2>/dev/null | jq -r '.geometry.y_offset')"
-XC="$(sketchybar --query cpu 2>/dev/null | jq -r '.bounding_rects|to_entries[0].value.origin[0]|floor')"
-XM="$(sketchybar --query mem 2>/dev/null | jq -r '.bounding_rects|to_entries[0].value.origin[0]|floor')"
-# Positive y_offset is up, so cpu must sit above mem.
-if [ -n "$YC" ] && [ "$YC" != null ] && [ "${YC%.*}" -gt "${YM%.*}" ] 2>/dev/null; then
-  ok "cpu row above mem row ($YC > $YM)"
-else
-  bad "cpu/mem y_offset order wrong or unreadable (cpu=$YC mem=$YM)"
-fi
-# SYS_ROW is only correct if the negative padding lands mem exactly on cpu.
-if [ "$XC" = "$XM" ]; then
-  ok "cpu/mem stacked at x=$XC"
-else
-  bad "SYS_ROW wrong: rows not aligned (cpu=$XC mem=$XM)"
-fi
-
-echo "network stack:"
-YU="$(sketchybar --query net_up 2>/dev/null | jq -r '.geometry.y_offset')"
-YD="$(sketchybar --query net_down 2>/dev/null | jq -r '.geometry.y_offset')"
-XU="$(sketchybar --query net_up 2>/dev/null | jq -r '.bounding_rects|to_entries[0].value.origin[0]|floor')"
-XD="$(sketchybar --query net_down 2>/dev/null | jq -r '.bounding_rects|to_entries[0].value.origin[0]|floor')"
-# Positive y_offset is up, so net_up must sit above net_down.
-if [ -n "$YU" ] && [ "$YU" != null ] && [ "${YU%.*}" -gt "${YD%.*}" ] 2>/dev/null; then
-  ok "up row above down row ($YU > $YD)"
-else
-  bad "y_offset order wrong or unreadable (up=$YU down=$YD)"
-fi
-if [ -n "$XU" ] && [ "$XU" != null ] && [ "$XU" = "$XD" ]; then
-  ok "rows stacked at x=$XU"
-else
-  bad "rows not stacked (up=$XU down=$XD)"
-fi
 
 echo "meeting.sh / meeting_click.sh:"
 MEET_TMP="$(mktemp -d)"   # removed at the end of this block; no trap, so
@@ -299,6 +278,14 @@ for c in $CARD_ITEMS; do
   CB="$(card_rows_max "$c")"
   [ "${CN:-0}" -ge "$CB" ] && ok "$c: budget of $CB rows pre-created" \
                            || bad "$c: budget is $CB but only $CN rows exist"
+  # And the same comparison without the bar in it. The one above only catches an
+  # overlong card because sketchybarrc happens to pre-create exactly the budget,
+  # so it reads as a truncation rather than as the budget being too small - and
+  # it cannot fire at all when the bar is unreachable. wifi is the card this
+  # matters for: eight rows against a budget of eight since the throughput moved
+  # into it, so the next row added there is the one that vanishes.
+  [ "${CW:-0}" -le "$CB" ] && ok "$c: $CW rows fit the budget of $CB" \
+                           || bad "$c: emits $CW rows against a budget of $CB - raise card_rows_max"
 done
 is "an unknown card falls back to the default budget" "$(card_rows_max not_a_card)" "$CARD_ROWS"
 
@@ -322,12 +309,14 @@ is "click opens" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing'
 is "click again closes" "$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')" "off"
 
 # Only one card at a time: mouse.exited.global does not reliably fire between
-# two quick clicks on different items.
-"$CONFIG_DIR/plugins/card.sh" wifi toggle >/dev/null 2>&1
-"$CONFIG_DIR/plugins/card.sh" cpu toggle  >/dev/null 2>&1
-CO="$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')$(sketchybar --query cpu 2>/dev/null | jq -r '.popup.drawing')"
+# two quick clicks on different items. The second card used to be cpu; clock is
+# the stand-in now that cpu is gone, and it is the one card that is always
+# drawn - media hides itself and mic is empty most of the day.
+"$CONFIG_DIR/plugins/card.sh" wifi  toggle >/dev/null 2>&1
+"$CONFIG_DIR/plugins/card.sh" clock toggle >/dev/null 2>&1
+CO="$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')$(sketchybar --query clock 2>/dev/null | jq -r '.popup.drawing')"
 is "opening one card closes the other" "$CO" "offon"
-"$CONFIG_DIR/plugins/card.sh" cpu close >/dev/null 2>&1
+"$CONFIG_DIR/plugins/card.sh" clock close >/dev/null 2>&1
 
 # Hover must be gone entirely.
 grep -rq "mouse.entered" "$CONFIG_DIR/sketchybarrc" "$CONFIG_DIR/plugins" "$CONFIG_DIR/cards" 2>/dev/null \
@@ -381,7 +370,9 @@ date +%s > "$CAW/cache/sketchybar/card-wifi.at"
 card_away_run "$CAW/fresh"
 grep -q -- "--set wifi popup.drawing=off" "$CAW/fresh" \
   && bad "sweep shut a card that had just opened" || ok "a just-opened card survives the sweep"
-grep -q -- "--set cpu popup.drawing=off" "$CAW/fresh" \
+# clock, because it is a card that is always on the bar and is not the one
+# whose stamp was just written. It used to be cpu, which is no longer a card.
+grep -q -- "--set clock popup.drawing=off" "$CAW/fresh" \
   && ok "the grace spares only the fresh card" || bad "grace spared a card that was not fresh"
 
 # An unreadable stamp must not wedge the sweep shut, the way tick treats one.
@@ -565,21 +556,40 @@ is "the unstartable booking opens the timesheet" \
    "$CONFIG_DIR/plugins/brave_tab.sh 3"
 rm -rf "$PP"
 
-# Media: exactly one actionable row, and it is the transport control at the end.
+# Media's actionable rows. This asserted exactly ONE, the transport control, at
+# the end - both facts are now wrong by design. The card grew an "Add to <year>"
+# row, so there are two; and the transport row is DROPPED once the track is
+# known to be in the playlist, so the add row is last and play/pause may be
+# absent entirely. What is still worth pinning is the pair of invariants the
+# card must never break: the add row is always offered while something is
+# playing, and it is always the last actionable row - a stray click at the
+# bottom of the card must never hit playback.
+#
 # With no session at all (fresh boot, nothing ever played) the card correctly
-# renders one actionless "Nothing playing" row instead - a second right shape,
-# not a failure, so assert the transport rules only when there IS a session.
+# renders "Nothing playing" plus its outcome row instead - a second right shape,
+# not a failure, so the transport rules are asserted only when there IS a track.
 CMED="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/media.sh"; card_rows 2>/dev/null )"
 CACT="$(printf '%s\n' "$CMED" | awk -F'\t' '$4!=""' | wc -l | tr -d ' ')"
-CLAST="$(printf '%s\n' "$CMED" | tail -1 | awk -F'\t' '{print $4}')"
+CLASTACT="$(printf '%s\n' "$CMED" | awk -F'\t' '$4!=""{a=$4} END{print a}')"
 CMROWS="$(printf '%s\n' "$CMED" | grep -c . | tr -d ' ')"
 CMTEXT="$(printf '%s\n' "$CMED" | awk -F'\t' 'NR==1{print $3}')"
-if [ "$CMROWS" = "1" ] && [ "$CACT" = "0" ] && [ "$CMTEXT" = "Nothing playing" ]; then
-  ok "media: no session"
+if [ "$CMTEXT" = "Nothing playing" ]; then
+  # The add row is not offered with nothing playing, so nothing here is
+  # actionable. The outcome row may or may not be present depending on whether
+  # a click happened in the last 30s, which is why the count is not pinned.
+  is "media: no session, nothing actionable" "$CACT" "0"
 else
-  is "media has one actionable row" "$CACT" "1"
-  case "$CLAST" in *togglePlayPause*) ok "play/pause is the last row" ;;
-                   *) bad "last media row is not the transport control (got '$CLAST')" ;; esac
+  case "$CLASTACT" in
+    *spotify_playlist_add.sh*) ok "the add row is the last actionable row" ;;
+    *) bad "last actionable media row is not the playlist add (got '$CLASTACT')" ;;
+  esac
+  # Transport is optional now, but when it IS drawn it must still be the only
+  # other action - a third actionable row would mean something new slipped in
+  # unnoticed.
+  case "$CACT" in
+    1|2) ok "media has $CACT actionable row(s)" ;;
+    *)   bad "media has $CACT actionable rows, expected 1 (in playlist) or 2" ;;
+  esac
 fi
 
 echo "media card artwork:"
@@ -639,8 +649,15 @@ ARTEOF
     source "$CONFIG_DIR/cards/media.sh"
     n="$(card_rows 2>/dev/null | grep -c .)"
     want="$(art_rows "$ar" "$al")"
-    [ "$n" = "$want" ] && echo "mirror=yes" || echo "mirror=no"
-    echo "mirror_detail=card $n vs art_rows $want"
+    # >=, not =. art_rows is a FLOOR now rather than a prediction: the card's
+    # real height also depends on whether the transport row was dropped and
+    # whether an outcome toast is live, neither of which the tick can see, so
+    # cards/media.sh re-runs art_show with its true count when the popup opens.
+    # What must still hold is that the tick never cuts the cover TALLER than the
+    # card - that is the direction that overruns the popup - so the floor has to
+    # stay at or below what the card actually emits.
+    [ "$n" -ge "$want" ] && echo "mirror=yes" || echo "mirror=no"
+    echo "mirror_detail=card $n vs art_rows floor $want"
   else
     echo "mirror=skip"
   fi )"
@@ -661,9 +678,9 @@ is "non-image bytes -> nonzero"   "$(mart junk_exit)" "1"
 is "non-image bytes -> no stale file" "$(mart junk_gone)" "yes"
 is "cover that cannot be written -> nonzero" "$(mart unwritable_exit)" "1"
 case "$(mart mirror)" in
-  yes)  ok "card rows match the square the cover is cut to" ;;
+  yes)  ok "the cover's square never exceeds the card's height" ;;
   skip) ok "row mirror: no session" ;;
-  *)    bad "card rows and art_rows disagree ($(mart mirror_detail))" ;;
+  *)    bad "art_rows floor is taller than the card ($(mart mirror_detail))" ;;
 esac
 
 echo "clock card:"
@@ -671,9 +688,15 @@ echo "clock card:"
 # and the weekly rhythm is named by it - so it is asserted against date itself.
 KROWS="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/clock.sh"
           card_rows 2>/dev/null )"
-is "week row matches date +%V" \
-   "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==1{print $3}')" "Week $(date +%V)"
-nonempty "date row" "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==2{print $3}')"
+# Prefix, not equality: the week and the long date share row 1 now (merged to
+# free a row for the chart), and the pace clause after them moves with the
+# weekday. Pinning the whole string would make this fail every day for a
+# formatting reason rather than a correctness one.
+case "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==1{print $3}')" in
+  "Week $(date +%V)"*) ok "week row matches date +%V" ;;
+  *) bad "week row does not start with 'Week $(date +%V)' (got '$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==1{print $3}')')" ;;
+esac
+nonempty "hours row" "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NR==2{print $3}')"
 is "no row spills past four fields" \
    "$(printf '%s\n' "$KROWS" | awk -F'\t' 'NF>4' | grep -c . | tr -d ' ')" "0"
 
@@ -682,8 +705,12 @@ is "no row spills past four fields" \
 # figure - no file, a file about another week, a file too old - and every one
 # of them has to print the dash instead of a number.
 KDIR="$(mktemp -d)"
+# Row 2, not row 3. The card grew a progress bar directly under the hours line,
+# so `sed -n 3p` was reading the bar - a row of block characters that matches
+# none of the four cases below and would have failed all of them for the wrong
+# reason.
 khours() { ( set +u; source "$CONFIG_DIR/colors.sh"; SB_CACHE_DIR="$KDIR"
-             source "$CONFIG_DIR/cards/clock.sh"; card_rows 2>/dev/null | sed -n 3p | cut -f3 ); }
+             source "$CONFIG_DIR/cards/clock.sh"; card_rows 2>/dev/null | sed -n 2p | cut -f3 ); }
 KH="$(khours)"
 case "$KH" in "—"*) ok "missing cache degrades to a dash" ;;
               *) bad "hours row invented a figure with no cache (got '$KH')" ;; esac
@@ -693,7 +720,13 @@ case "$KH" in "—"*) ok "a cache about another week is not quoted" ;;
               *) bad "hours row quoted another week (got '$KH')" ;; esac
 printf '{"week":"%s","logged_minutes":1680,"booked_minutes":2400}\n' "$(date +%G-W%V)" \
   > "$KDIR/productive-week.json"
-is "this week's cache renders as hours" "$(khours)" "28h / 40h logged this week"
+# Prefix again: the row ends with a pace clause ("6h03 under pace") computed
+# from how far into the week it is, so the tail changes every day and only the
+# figures are worth pinning.
+case "$(khours)" in
+  "Logged  ·  28h / 40h  ·  "*) ok "this week's cache renders as hours" ;;
+  *) bad "hours row is not 'Logged · 28h / 40h · …' (got '$(khours)')" ;;
+esac
 touch -t 200001010000 "$KDIR/productive-week.json"
 KH="$(khours)"
 case "$KH" in "—"*) ok "a stale cache is not quoted" ;;
@@ -703,7 +736,13 @@ rm -rf "$KDIR"
 # Pro-rated by how far into the week you are, which is the only way the figure
 # means anything: 8h on Monday is fine and the same 8h on Wednesday is not.
 # 2400 minutes = a 40h week.
-kcolor() { ( set +u; source "$CONFIG_DIR/cards/clock.sh"; clock_hours_color "$1" "$2" "$3" ); }
+# clock_hours_color was split into clock_week_expect (how much you should have
+# logged by this weekday) and clock_pace_color (how the gap is coloured), so the
+# card could show the expectation as the bar's ▒ zone as well as colour by it.
+# Composed here to keep asserting the same five behaviours through the same
+# three arguments - the split is an implementation detail, not a contract change.
+kcolor() { ( set +u; source "$CONFIG_DIR/cards/clock.sh"
+             clock_pace_color "$1" "$(clock_week_expect "$2" "$3")" ); }
 is "8h on Monday is on track"      "$(kcolor 480 2400 1)"  "$GREEN"
 is "8h by Wednesday is far behind" "$(kcolor 480 2400 3)"  "$RED"
 is "15h by Wednesday is behind"    "$(kcolor 900 2400 3)"  "$YELLOW"
@@ -813,10 +852,29 @@ HFIX='{"result":{"agents":[
   {"pane_id":"w3:p1","agent_status":"working","terminal_title_stripped":"write docs","cwd":"/a/docs-dir"},
   {"pane_id":"w4:p1","agent_status":"idle","terminal_title_stripped":"waiting","cwd":"/a/idle-dir"}]}}'
 HROWS="$(set +u; export HERDR_AGENT_JSON="$HFIX"; source "$CONFIG_DIR/cards/herdr.sh"; card_rows)"
-is "card lists every agent"  "$(printf '%s' "$HROWS" | grep -c .)" 4
-is "blocked agent sorts first" "$(printf '%s' "$HROWS" | head -1 | cut -f3)" "fix the tests  ·  blocked-dir"
-is "every row focuses its pane" \
-   "$(printf '%s' "$HROWS" | awk -F'\t' '$4 !~ /^herdr agent focus w[0-9]+:p[0-9]+$/{bad=1} END{print bad+0}')" 0
+# The card is a block per workspace now - a header, a rule, group rows, repo
+# sub-lines and an overflow notice - so a bare row count no longer counts
+# agents. Filter to the rows that carry an agent focus action, which is exactly
+# the set that used to be the whole card.
+HAGENTS="$(printf '%s\n' "$HROWS" | awk -F'\t' '$4 ~ /^herdr agent focus /')"
+is "card lists every agent" "$(printf '%s\n' "$HAGENTS" | grep -c .)" 4
+# head -1 of the whole card is the header row now; the ordering claim is about
+# the agent rows, so it is asserted against those. Prefix match because the text
+# is space-padded out to a fixed column pitch to fake the right-hand status
+# column, and pinning the padding would make this a whitespace test.
+case "$(printf '%s\n' "$HAGENTS" | head -1 | cut -f3)" in
+  *"fix the tests"*) ok "blocked agent sorts first" ;;
+  *) bad "blocked agent is not first (got '$(printf '%s\n' "$HAGENTS" | head -1 | cut -f3)')" ;;
+esac
+# Two things wrong with the old form of this. It required EVERY row to carry an
+# agent focus, which the header, rule, repo and overflow rows deliberately do
+# not; and `w[0-9]+` was wrong against real data regardless - herdr numbers
+# workspaces in BASE 36, and this machine is running wB, wF, wQ, wS and wV right
+# now, so the assertion would have failed on the live flock while passing on the
+# decimal fixture. Now: rows either carry no action, or carry a well-formed
+# agent-or-workspace focus.
+is "every actionable row focuses an agent or a workspace" \
+   "$(printf '%s\n' "$HROWS" | awk -F'\t' '$4 != "" && $4 !~ /^herdr (agent|workspace) focus [A-Za-z0-9:_-]+$/{bad=1} END{print bad+0}')" 0
 HERDR_AGENT_JSON="$HFIX" "$CONFIG_DIR/plugins/herdr.sh"
 is "blocked digit" "$(sketchybar --query herdr.blocked 2>/dev/null | jq -r '.label.value')" "1"
 is "working digit" "$(sketchybar --query herdr.working 2>/dev/null | jq -r '.label.value')" "2"
@@ -824,11 +882,34 @@ is "zero-count digit hides" "$(sketchybar --query herdr.done 2>/dev/null | jq -r
 is "sheep wears the urgent colour" "$(sketchybar --query herdr 2>/dev/null | jq -r '.icon.color')" "$RED"
 "$CONFIG_DIR/plugins/herdr.sh"   # re-render from the live socket
 
+# `claude` is drawn inside the herdr cluster but is the one item there the helper
+# does not paint, so it carries its own update_freq and its own script - and a
+# script that cannot run leaves the field blank with no other symptom. The EXIT
+# STATUS is the assertion, not the output: with no rate-limit capture and no
+# recent transcripts it legitimately prints nothing, and demanding a figure here
+# would fail on a machine that simply has not used Claude Code this week.
+[ -x "$CONFIG_DIR/plugins/claude_usage.sh" ] && ok "claude_usage.sh executable" \
+                                             || bad "plugins/claude_usage.sh not executable"
+"$CONFIG_DIR/plugins/claude_usage.sh" >/dev/null 2>&1 \
+  && ok "claude_usage.sh exits 0" \
+  || bad "claude_usage.sh exited $? (the claude item will stay blank)"
+# Undotted on purpose. card.sh maps an item name straight onto cards/$ITEM.sh
+# and $ITEM.pop.$N, so naming it herdr.claude to match its neighbours would send
+# it looking for cards/herdr.claude.sh and the popup would never open.
+"$CONFIG_DIR/plugins/card.sh" claude toggle >/dev/null 2>&1
+CLROWS="$(sketchybar --query claude 2>/dev/null | jq -r '.popup.items[]?' | grep -c '^claude\.pop\.')"
+[ "${CLROWS:-0}" -gt 0 ] && ok "claude card has rows" \
+                         || bad "claude card has no popup rows - cards/claude.sh or the name is wrong"
+"$CONFIG_DIR/plugins/card.sh" claude close >/dev/null 2>&1
+
 echo "sb-helper:"
-# The helper renders cpu, mem, net_up/down, mic, volume and the herdr cluster
-# from one process. It cannot be sourced the way a shell plugin can, so it
-# answers --selftest with one key=value per line instead - that is what keeps
-# this suite able to assert its arithmetic rather than only its side effects.
+# The helper renders mic, volume and the herdr cluster from one process, and
+# still SAMPLES the network without owning an item for it: the throughput is a
+# row in the Wi-Fi card now, read out of helper-state.json. So the rate
+# assertions below stay even though nothing on the bar draws a rate. It cannot
+# be sourced the way a shell plugin can, so it answers --selftest with one
+# key=value per line instead - that is what keeps this suite able to assert its
+# arithmetic rather than only its side effects.
 HELPER="$CONFIG_DIR/bin/sb-helper"
 if [ ! -x "$HELPER" ]; then
   bad "bin/sb-helper not built (see ~/.cache/sketchybar/build-sb-helper.err)"
@@ -847,26 +928,18 @@ fi
 hval() { printf '%s\n' "$HST" | awk -F= -v k="$1" '$1==k {print $2; exit}'; }
 
 if [ -n "$HST" ]; then
-  pct "helper cpu" "$(hval cpu)"
-  pct "helper mem" "$(hval mem)"
-  pct "helper mem_resident" "$(hval mem_resident)"
-  # The displayed memory number must stay the one memory_pressure reports: the
-  # native page-sum reads far higher (it counts what is resident rather than
-  # what cannot be reclaimed) and swapping to it would silently redefine the
-  # item AND invalidate the 60/85 colour thresholds. Asserted within 3 points
-  # of the shell reading, not equality - they are sampled moments apart.
-  SHELL_MEM="$(memory_pressure 2>/dev/null | awk '/free percentage/ {gsub("%","",$NF); printf "%.0f", 100-$NF}')"
-  HD=$(( $(hval mem) - ${SHELL_MEM:-0} )); HD=${HD#-}
-  [ "$HD" -le 3 ] 2>/dev/null && ok "helper mem tracks memory_pressure ($(hval mem) vs $SHELL_MEM)" \
-                              || bad "helper mem drifted from memory_pressure ($(hval mem) vs ${SHELL_MEM:-?})"
   # Throughput must stay integers: a nil rate rendered as a label is how the
   # link once showed a multi-GB/s spike off a counter reset.
   case "$(hval net)" in
     [0-9]*/[0-9]*) ok "helper net rates = $(hval net)" ;;
     *)             bad "helper net rates not int/int (got '$(hval net)')" ;;
   esac
-  # Five characters max, or the measured label widths in sketchybarrc no longer
-  # hold and the cluster grows into the notch.
+  # Five characters max. It used to be the measured label widths of the net_up
+  # /net_down items that depended on this; those are gone, but the pair now
+  # shares ONE row of the Wi-Fi card as "↓ x/s   ·   ↑ y/s", and that card is at
+  # its full eight-row budget - so a rate that grows a character widens the
+  # popup instead, toward the screen edge the "popups fit the screen" block
+  # guards. humanRate() is unchanged, so this is still an exact match.
   is "helper rate formatting" "$(hval human)" "0B/2K/5.0M/200M"
   case "$(hval mic)" in 0|1) ok "helper mic = $(hval mic)" ;; *) bad "helper mic not 0/1 (got '$(hval mic)')" ;; esac
   case "$(hval volume)" in
@@ -891,7 +964,7 @@ echo "sb-helper ownership:"
 # closing), which is correct - only a nonzero update_freq means polling.
 if pgrep -x sb-helper >/dev/null 2>&1; then
   ok "helper process running"
-  for i in cpu mem net_down mic volume herdr; do
+  for i in mic volume herdr; do
     UF="$(sketchybar --query "$i" 2>/dev/null | jq -r '.scripting.update_freq // 0')"
     [ "${UF:-0}" = "0" ] && ok "$i has no poll timer" \
                          || bad "$i is polling again (update_freq=$UF)"
@@ -905,34 +978,16 @@ else
   # Legitimate state: no toolchain, or a failed build. sketchybarrc restores the
   # shell timers in that case, so assert the FALLBACK rather than the helper.
   ok "helper not running, checking shell fallback"
-  for i in mem net_down mic herdr; do
+  # mic and herdr only: sketchybarrc's fallback hands volume a script but no
+  # timer (it is event-driven), and there is no net item left to restore a
+  # sampler to - without the helper the Wi-Fi card's throughput row simply
+  # reports nothing, which is the honest outcome and not a failure here.
+  for i in mic herdr; do
     UF="$(sketchybar --query "$i" 2>/dev/null | jq -r '.scripting.update_freq // 0')"
     [ "${UF:-0}" != "0" ] && ok "$i fell back to polling (update_freq=$UF)" \
                           || bad "$i has neither a helper nor a poll timer - it will never update"
   done
 fi
-
-echo "cpu card agrees with the bar:"
-# The regression this guards is the one the helper could reintroduce: the card
-# used to sum `ps` itself, so it and the item quoted different numbers for the
-# same thing. The card now reads what the helper published.
-CARD_CPU="$( set +u; source "$CONFIG_DIR/colors.sh"; source "$CONFIG_DIR/cards/cpu.sh"
-             card_rows 2>/dev/null | head -1 | cut -f3 )"
-case "$CARD_CPU" in
-  *"CPU "*"Memory "*) ok "card summary row: $CARD_CPU" ;;
-  *)                  bad "card summary row malformed (got '$CARD_CPU')" ;;
-esac
-# A helper that died must not leave the card quoting a frozen reading.
-STALE_DIR="$(mktemp -d)"
-printf '{"at":1,"cpu":99,"mem":99}\n' > "$STALE_DIR/helper-state.json"
-STALE_CPU="$( set +u; source "$CONFIG_DIR/colors.sh"; SB_CACHE_DIR="$STALE_DIR"
-              source "$CONFIG_DIR/cards/cpu.sh"; card_rows 2>/dev/null | head -1 | cut -f3 )"
-case "$STALE_CPU" in
-  *"CPU 99%"*) bad "card quoted a stale helper reading" ;;
-  *"CPU "*)    ok "stale helper state ignored, card fell back to sys_lib" ;;
-  *)           bad "card produced nothing on the stale path (got '$STALE_CPU')" ;;
-esac
-rm -rf "$STALE_DIR"
 
 echo "mic card:"
 # The card and the indicator must never contradict each other: a red "mic in
@@ -1023,32 +1078,46 @@ case "${PS_W:-0}" in
     done ;;
 esac
 
-echo "hyprspace workspaces:"
-# The pips claim to be a legend for alt-1..alt-4, and the click claims to mean
-# the same thing as the keystroke. Both are only true while config.toml agrees,
-# and that file is edited independently of this repo's bar - so assert the
-# agreement rather than the comment.
-HS_CONF="$HOME/.config/hyprspace/config.toml"
-if [ ! -r "$HS_CONF" ]; then
-  bad "hyprspace config unreadable at $HS_CONF"
+echo "workspaces:"
+# The bindings the pips claim to be a legend for. omniwm keeps its hotkeys in
+# ~/.config/omniwm/settings.toml as [[hotkeys]] blocks pairing an `id` with a
+# `binding`, so the claim is asserted against that file the way it used to be
+# against the old manager's config. Matched on the PAIR - the id line follows
+# the binding line inside one block - because grepping for the binding alone
+# would pass on any block that happens to carry it.
+OW_CONF="$HOME/.config/omniwm/settings.toml"
+if [ ! -r "$OW_CONF" ]; then
+  bad "omniwm settings unreadable at $OW_CONF"
 else
   for sid in $SPACE_IDS; do
-    grep -Eq "^alt-$sid[[:space:]]*=[[:space:]]*'workspace $sid'" "$HS_CONF" \
-      && ok "alt-$sid switches to workspace $sid" \
-      || bad "alt-$sid is not bound to 'workspace $sid' in config.toml"
+    # switchWorkspace is 0-indexed against a 1-indexed pip: Option+1 is
+    # switchWorkspace.0. Getting this backwards asserts a binding that exists
+    # for the wrong workspace, which passes and means nothing.
+    want_id="switchWorkspace.$(( sid - 1 ))"
+    awk -v id="$want_id" -v key="Option+$sid" '
+      /^\[\[hotkeys\]\]/ { b = "" }
+      /^binding = / { gsub(/binding = |"/, ""); b = $0 }
+      /^id = / { gsub(/id = |"/, ""); if ($0 == id && b == key) { found = 1 } }
+      END { exit !found }' "$OW_CONF" \
+      && ok "Option+$sid switches to workspace $sid" \
+      || bad "Option+$sid is not bound to $want_id in settings.toml"
   done
-  # Without this callback the pips only repaint on the catch-up events
-  # (front_app_switched, space_windows_change), so a switch that opens no window
-  # and changes no app - alt-3 to an empty workspace - would leave the pill
-  # behind on the workspace you left.
-  grep -q 'sketchybar --trigger hyprspace_workspace_change' "$HS_CONF" \
-    && ok "workspace change reaches the bar" \
-    || bad "config.toml does not trigger hyprspace_workspace_change"
+
+  # omniwm has no config-level callback; the watcher started by sketchybarrc is
+  # what turns its IPC stream into the wm_workspace_change trigger, so its
+  # absence is why the pips would stop repainting on a switch.
+  # ps, not pgrep: pgrep needs sysmond and has failed outright on this machine.
+  ps -Ao args= | grep -q '[o]mniwmctl watch active-workspace' \
+    && ok "omniwm event watcher running" \
+    || bad "no omniwmctl watcher - pips will not repaint on a switch"
+  omniwmctl ping >/dev/null 2>&1 \
+    && ok "omniwm ipc reachable" \
+    || bad "omniwm ipc unreachable (enable it from the OmniWM menu bar)"
 fi
 
 # Item set and paint set, same drift guard as the card rows: sketchybarrc
 # creates one pip per id and the plugin addresses one pip per id, both out of
-# $SPACE_IDS, so a fifth workspace is wired in by editing colors.sh alone.
+# $SPACE_IDS, so another workspace is wired in by editing colors.sh alone.
 SB_ITEMS="$(sketchybar --query bar 2>/dev/null | jq -r '.items[]')"
 for sid in $SPACE_IDS; do
   printf '%s\n' "$SB_ITEMS" | grep -qx "space.$sid" \
@@ -1057,25 +1126,22 @@ done
 printf '%s\n' "$SB_ITEMS" | grep -qx "space_watch" \
   && ok "space_watch paints them" || bad "space_watch missing from the bar"
 
-# The live paint. Exactly one pill, on the workspace hyprspace says is focused:
-# two pills means a repaint that only ever turned one on, none means the
-# cluster is showing you nothing at all.
-HS_FOCUSED="$(hyprspace list-workspaces --focused 2>/dev/null)"
-if [ -z "$HS_FOCUSED" ]; then
-  ok "hyprspace not running, skipping the live paint"
+# The live paint. Exactly one pill, on the workspace omniwm says is current:
+# two pills means a repaint that only ever turned one on, none means the cluster
+# is showing you nothing at all. Read through the plugin's own query so the
+# suite cannot drift from what the bar actually asks.
+WS_FOCUSED="$("$CONFIG_DIR/plugins/workspaces.sh" --print-focused 2>/dev/null)"
+if [ -z "$WS_FOCUSED" ]; then
+  ok "omniwm not answering, skipping the live paint"
 else
-  HS_PILLS=""
+  WS_PILLS=""
   for sid in $SPACE_IDS; do
     [ "$(sketchybar --query "space.$sid" 2>/dev/null | jq -r '.geometry.background.drawing')" = "on" ] \
-      && HS_PILLS="$HS_PILLS$sid"
+      && WS_PILLS="$WS_PILLS$sid"
   done
-  case "$HS_FOCUSED" in
-    # A workspace past the bound four is reachable by moving a window there, and
-    # then no pip is the right one to light up.
-    [1-9]*) printf '%s\n' "$SPACE_IDS" | grep -qw "$HS_FOCUSED" \
-              && is "the pill is on the focused workspace" "$HS_PILLS" "$HS_FOCUSED" \
-              || is "focused workspace $HS_FOCUSED is off the cluster, no pill" "$HS_PILLS" "" ;;
-  esac
+  printf '%s\n' "$SPACE_IDS" | grep -qw "$WS_FOCUSED" \
+    && is "the pill is on the focused workspace" "$WS_PILLS" "$WS_FOCUSED" \
+    || is "focused workspace $WS_FOCUSED is off the cluster, no pill" "$WS_PILLS" ""
 fi
 
 echo "deps:"

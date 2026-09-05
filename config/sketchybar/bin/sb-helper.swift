@@ -13,8 +13,9 @@
 // update, and the readings come from frameworks instead of subprocesses.
 //
 // WHAT IT OWNS
-//   cpu, mem            host_statistics64 tick deltas, no `ps -A`
-//   net_up, net_down    getifaddrs if_data, no `netstat`
+//   net rates           getifaddrs if_data, no `netstat` - published, not
+//                       painted: the throughput items are gone from the bar
+//                       and the numbers live in the wifi card now
 //   mic                 CoreAudio, and PUSH not poll - the 3s tick is gone
 //   volume              CoreAudio, replacing three ~107ms osascript calls
 //   herdr + digits      one `herdr agent list`, parsed natively, no jq
@@ -142,100 +143,6 @@ final class Bar {
 }
 
 let bar = Bar()
-
-// MARK: - CPU and memory
-
-/// System-wide CPU load from the kernel's tick counters. The shell version
-/// summed `ps -A -o %cpu`, which reports each process's *decayed average* and
-/// so lagged a burst by seconds; a tick delta between our own samples is the
-/// instantaneous figure `top` shows, for no subprocess at all.
-final class CPUSampler {
-    private var previous: host_cpu_load_info?
-
-    private func read() -> host_cpu_load_info? {
-        var size = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.size / MemoryLayout<integer_t>.size)
-        var info = host_cpu_load_info()
-        let kr = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
-                host_statistics64(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &size)
-            }
-        }
-        return kr == KERN_SUCCESS ? info : nil
-    }
-
-    /// nil until a second sample exists, and on any counter rollback. nil means
-    /// "no reading" and leaves the item showing its last good value - never a
-    /// confident 0% over a machine that is actually busy, which is the same
-    /// rule the shell version's `pipefail` + empty-awk pairing enforced.
-    func percent() -> Int? {
-        guard let now = read() else { return nil }
-        defer { previous = now }
-        guard let was = previous else { return nil }
-
-        func tick(_ i: host_cpu_load_info, _ n: Int32) -> Double {
-            withUnsafePointer(to: i.cpu_ticks) {
-                $0.withMemoryRebound(to: natural_t.self, capacity: Int(CPU_STATE_MAX)) { Double($0[Int(n)]) }
-            }
-        }
-        let user = tick(now, CPU_STATE_USER)   - tick(was, CPU_STATE_USER)
-        let sys  = tick(now, CPU_STATE_SYSTEM) - tick(was, CPU_STATE_SYSTEM)
-        let nice = tick(now, CPU_STATE_NICE)   - tick(was, CPU_STATE_NICE)
-        let idle = tick(now, CPU_STATE_IDLE)   - tick(was, CPU_STATE_IDLE)
-        let total = user + sys + nice + idle
-        guard total > 0, user >= 0, sys >= 0, idle >= 0 else { return nil }
-        return min(100, max(0, Int(((user + sys + nice) / total * 100).rounded())))
-    }
-}
-
-/// The number the bar has always shown: 100 - memory_pressure's "System-wide
-/// memory free percentage".
-///
-/// This is the one reading that stayed a subprocess, on purpose. Every page-sum
-/// you can compute natively disagrees with it wildly - on this machine
-/// memory_pressure says 20% used while active+wired+compressed says 56% - so
-/// going native here would not have been a port, it would have silently
-/// redefined what the item means AND invalidated the 60%/85% colour thresholds
-/// tuned against the old scale. memory_pressure costs ~14ms at a 10s tick,
-/// which is a sixth of what the whole shell tick used to cost, so fidelity is
-/// nearly free. memResidentPercent() below computes the Activity-Monitor-style
-/// figure; --selftest reports both, so switching later is a threshold change
-/// and a one-line swap rather than an investigation.
-func memPercent() -> Int? {
-    guard let out = run("memory_pressure", [], timeout: 5),
-          let text = String(data: out, encoding: .utf8)
-    else { return nil }
-    for line in text.split(separator: "\n") where line.contains("free percentage") {
-        let digits = line.filter(\.isNumber)
-        if let free = Int(digits), (0...100).contains(free) { return 100 - free }
-    }
-    return nil
-}
-
-/// Resident, unreclaimable memory as a share of physical - what Activity
-/// Monitor calls "Memory Used". Not displayed; see memPercent().
-func memResidentPercent() -> Int? {
-    var size = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.size / MemoryLayout<integer_t>.size)
-    var vm = vm_statistics64()
-    let kr = withUnsafeMutablePointer(to: &vm) {
-        $0.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
-            host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &size)
-        }
-    }
-    guard kr == KERN_SUCCESS else { return nil }
-    var pageSize: vm_size_t = 0
-    guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else { return nil }
-
-    let used = Double(vm.active_count + vm.wire_count + vm.compressor_page_count) * Double(pageSize)
-    let total = Double(ProcessInfo.processInfo.physicalMemory)
-    guard total > 0 else { return nil }
-    return min(100, max(0, Int((used / total * 100).rounded())))
-}
-
-func loadColor(_ pct: Int) -> String {
-    if pct >= 85 { return C.red }
-    if pct >= 60 { return C.yellow }
-    return C.aqua
-}
 
 // MARK: - Network throughput
 
@@ -568,21 +475,14 @@ func run(_ tool: String, _ args: [String], timeout: TimeInterval) -> Data? {
 // them into ONE mach message. Cheap as a send is, one message that repaints the
 // whole cluster also means the bar never lays out a half-updated row.
 
-let cpuSampler = CPUSampler()
 let netSampler = NetSampler()
 
-func cpuArgs() -> [String] {
-    var a = [String]()
-    if let c = cpuSampler.percent() { a += ["--set", "cpu", "label=\(c)%", "icon.color=\(loadColor(c))"] }
-    if let m = memPercent()         { a += ["--set", "mem", "label=\(m)%", "icon.color=\(loadColor(m))"] }
-    return a
-}
-
-func netArgs() -> [String] {
-    guard let (down, up) = netSampler.rates() else { return [] }
-    return ["--set", "net_down", "label=\(humanRate(down))",
-            "--set", "net_up",   "label=\(humanRate(up))"]
-}
+/// The most recent throughput reading, kept because nothing paints it any more:
+/// the sampler is polled on the 3s tick but published on the 10s one, and
+/// rates() cannot simply be called from the publish tick instead. It diffs
+/// against its own previous sample, so a second caller steals the counters the
+/// first one would have diffed and both readings come back wrong.
+var netRates: (down: Int, up: Int)?
 
 func micArgs() -> [String] {
     Audio.micActive()
@@ -633,20 +533,39 @@ func herdrArgs(_ f: Flock?) -> [String] {
 
 // MARK: - Shared state for the cards
 //
-// cards/cpu.sh used to sum `ps` itself, which is how the item and its own card
-// could disagree about the same percentage. The helper publishes what it just
-// rendered and the card reads it, so they agree by construction and the card
-// loses a subprocess too.
+// A card that computes its own version of a reading is a card that can
+// contradict the bar about it - cards/cpu.sh summed `ps` itself and disagreed
+// with the item beside it. The helper publishes its readings and the cards
+// quote them, so they agree by construction and each card loses a subprocess.
+// It is also the only route left for a reading with no item: throughput is
+// sampled here and shown only in the wifi card, so if it is not in this file it
+// exists nowhere the shell can reach.
 let cacheDir: String = {
     let base = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"]
         ?? (ProcessInfo.processInfo.environment["HOME"].map { $0 + "/.cache" } ?? "/tmp")
     return base + "/sketchybar"
 }()
 
-func publish(cpu: Int?, mem: Int?, flock: Flock?) {
+/// Flat keys, because cards read this with `helper_reading <key>` and that
+/// helper indexes the object's top level. Throughput is published four ways on
+/// purpose: the *_human strings come from the same humanRate() the bar item
+/// used, so a card cannot drift from how the number always looked, and the
+/// *_bps counts are there so the next consumer can threshold or graph the rate
+/// without parsing "5.0M" back into an integer.
+///
+/// All four go out together or none do. helper_reading() cannot tell an absent
+/// key from a stale file, so dropping the zero ones would make an idle link
+/// render as "?" - and conversely, publishing a placeholder 0 before the
+/// sampler has two counters to diff would state a fact we do not have yet.
+/// A quiet link says 0B; a link we have not measured says nothing at all.
+func publish(net: (down: Int, up: Int)?, flock: Flock?) {
     var d: [String: Any] = ["at": Int(Date().timeIntervalSince1970)]
-    if let cpu { d["cpu"] = cpu }
-    if let mem { d["mem"] = mem }
+    if let net {
+        d["net_down_bps"] = net.down
+        d["net_up_bps"] = net.up
+        d["net_down_human"] = humanRate(net.down)
+        d["net_up_human"] = humanRate(net.up)
+    }
     if let f = flock {
         d["herdr"] = ["blocked": f.blocked, "working": f.working, "done": f.done,
                       "idle": f.idle, "unknown": f.unknown]
@@ -676,7 +595,7 @@ extension FileManager {
 // per card per tick and no fork, and it now covers every card rather than only
 // the items that happened to still be polling.
 let cardMaxOpen: TimeInterval = 45
-let cardItems = ["meeting", "productive", "media", "cpu", "wifi", "caffeine", "herdr"]
+let cardItems = ["meeting", "productive", "media", "wifi", "caffeine", "herdr"]
 
 func closeStuckCards() -> [String] {
     var a = [String]()
@@ -824,7 +743,7 @@ func serveEvents(_ bootstrapName: String) {
 // parsed. This is what keeps the suite able to assert this file's arithmetic
 // without a running bar - the property the shell plugins had for free by being
 // sourceable.
-/// Both samplers are delta-based, so their first call only primes and a second
+/// The net sampler is delta-based, so its first call only primes and a second
 /// call can still come back empty if it lands inside the same sampling window -
 /// which made this suite flake roughly one run in three. Retry rather than
 /// sleeping longer by default: it is faster when the reading is ready and
@@ -840,16 +759,6 @@ func settle<T>(tries: Int = 6, delayUs: UInt32 = 250_000, _ read: () -> T?) -> T
 func selfTest() -> Never {
     var out = [String]()
     var ok = true
-
-    _ = cpuSampler.percent()          // prime: a delta needs two samples
-    if let c = settle({ cpuSampler.percent() }), (0...100).contains(c) { out.append("cpu=\(c)") }
-    else { out.append("cpu=ERR"); ok = false }
-
-    if let m = memPercent(), (0...100).contains(m) { out.append("mem=\(m)") }
-    else { out.append("mem=ERR"); ok = false }
-
-    if let r = memResidentPercent(), (0...100).contains(r) { out.append("mem_resident=\(r)") }
-    else { out.append("mem_resident=ERR"); ok = false }
 
     if let iface = netSampler.primaryInterface() { out.append("iface=\(iface)") }
     else { out.append("iface=NONE") }   // legitimately absent when offline
@@ -919,7 +828,13 @@ let bootstrapName = argv.first ?? "git.felix.sbhelper"
 // cluster blank for a whole interval.
 var flock = readFlock()
 var lastFlockShape = ""
-bar.send(cpuArgs() + netArgs() + micArgs() + volumeArgs() + herdrArgs(flock))
+bar.send(micArgs() + volumeArgs() + herdrArgs(flock))
+
+// Prime the throughput counters here, not on the first tick. The opening paint
+// used to call rates() as a side effect of drawing the net items; without that
+// call the tick at +3s is the sampler's FIRST, which by contract returns 0 - so
+// the first publish would advertise a dead link on a busy machine.
+_ = netSampler.rates()
 
 // Items are laid out in waves after a reload, and meeting/productive fit their
 // labels against the x the herdr cluster pushes them to. Nudge them once the
@@ -931,25 +846,25 @@ func flockShape(_ f: Flock?) -> String {
 lastFlockShape = flockShape(flock)
 DispatchQueue.main.asyncAfter(deadline: .now() + 1) { bar.send(["--trigger", "herdr_flock"]) }
 
-/// 3s: throughput is a rate, and a longer window smears a burst away.
+/// 3s: throughput is a rate, and a longer window smears a burst away. The timer
+/// outlived the net_up/net_down items it used to paint, because the window is a
+/// property of the reading and not of the widget - sampling on the 10s publish
+/// tick instead would average every burst into nothing before the card sees it.
 let netTimer = DispatchSource.makeTimerSource(queue: .main)
 netTimer.schedule(deadline: .now() + 3, repeating: 3)
-netTimer.setEventHandler { bar.send(netArgs()) }
+netTimer.setEventHandler {
+    if let r = netSampler.rates() { netRates = r }
+}
 netTimer.resume()
 
-/// 10s for cpu/mem and the flock. herdr used to poll at 5s and was the single
-/// most expensive item on the bar; at 10s with no fork it is nearly free.
+/// 10s for the flock. herdr used to poll at 5s and was the single most
+/// expensive item on the bar; at 10s with no fork it is nearly free.
 let slowTimer = DispatchSource.makeTimerSource(queue: .main)
 slowTimer.schedule(deadline: .now() + 10, repeating: 10)
 slowTimer.setEventHandler {
-    let cpu = cpuSampler.percent()
-    let mem = memPercent()
     flock = readFlock()
 
-    var args = [String]()
-    if let cpu { args += ["--set", "cpu", "label=\(cpu)%", "icon.color=\(loadColor(cpu))"] }
-    if let mem { args += ["--set", "mem", "label=\(mem)%", "icon.color=\(loadColor(mem))"] }
-    args += herdrArgs(flock)
+    var args = herdrArgs(flock)
     args += closeStuckCards()
     bar.send(args)
 
@@ -958,7 +873,7 @@ slowTimer.setEventHandler {
         lastFlockShape = shape
         bar.send(["--trigger", "herdr_flock"])
     }
-    publish(cpu: cpu, mem: mem, flock: flock)
+    publish(net: netRates, flock: flock)
 }
 slowTimer.resume()
 

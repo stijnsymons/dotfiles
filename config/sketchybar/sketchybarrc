@@ -13,9 +13,10 @@ source "$CONFIG_DIR/colors.sh"
 "$CONFIG_DIR/bin/build.sh"
 
 ##### Helper #####
-# bin/sb-helper renders cpu, mem, net_up, net_down, mic, volume and the herdr
-# cluster from one long-lived process: sketchybar forks a script per item per
-# tick, and the fork was the cost - those six items burned ~4.2s of process
+# bin/sb-helper renders mic, volume and the herdr cluster from one long-lived
+# process, and samples the network interface to publish throughput into
+# helper-state.json for the wifi card: sketchybar forks a script per item per
+# tick, and the fork was the cost - those items burned ~4.2s of process
 # time a minute between them, against ~0.004ms per update over the bar's own
 # mach port. It also owns the stuck-card watchdog that each of those ticks used
 # to drive, and it turns mic and volume from polls into CoreAudio listeners.
@@ -44,22 +45,20 @@ FONT_ICON="Hack Nerd Font"
 FONT_TEXT="FiraMono Nerd Font"
 SZ_ICON=15.0          # default icon glyphs
 SZ_LABEL=12.0         # default labels
-SZ_NET=9.0            # stacked two-row items (net throughput, cpu/mem)
 W_PCT=35              # widest "100%"  at SZ_LABEL
-W_SYS=20              # widest "100%"  at SZ_NET (stacked cpu/mem rows)
-W_NET=31              # widest "99.9M" at SZ_NET
+# SZ_NET, W_SYS, W_NET, SYS_ROW and NET_ROW lived here and are gone with the
+# items they measured. They described the two stacked two-row columns - cpu over
+# mem, net_up over net_down - which used a negative padding_right to pull the
+# lower row on top of the upper one. cpu/mem is deleted and the throughput moved
+# into the wifi card, so nothing on the bar stacks any more. Bring the whole
+# apparatus back together if a two-row item ever returns; half of it is useless.
 # meeting and productive deliberately have NO width constant: plugins/fit.sh
 # sizes them to content and ellipsises against the notch every tick. A fixed
 # width there cannot grow into free space, and an undefined one silently
 # renders as a bare icon.
 W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
                       # 154 -> 200 (+30%). 35 chars x 5.70pt at FiraMono/SZ_LABEL.
-                      # Headroom exists only because cpu/mem stack into one column;
                       # check.sh asserts the cluster still clears the notch.
-SYS_ROW=34            # one cpu/mem row: icon + W_SYS. Same stacking trick as
-                      # NET_ROW below - re-measure if the font or width changes.
-NET_ROW=44            # one throughput row: icon + W_NET. Negative padding of
-                      # this size stacks the two rows into one column.
 
 ##### Bar #####
 # Solid full-width bar flush to the top edge. No y_offset/margin = no floating.
@@ -162,6 +161,20 @@ card_popup=(
   popup.y_offset=-4
 )
 
+# The same card, with NO popup.align at all - sketchybar places it rather than
+# anchoring it to an edge of the item. For a card whose width is fixed and known
+# an explicit align is better, which is why it stays the default above; but a
+# card that changes width with its content can outgrow whichever edge it was
+# pinned to, and then the anchor is the thing pushing it off screen. Only the
+# herdr card needs this today. Built by filtering the array rather than being
+# written out a second time, so a change to the border or the row height above
+# cannot apply to eight cards and miss the ninth.
+card_popup_noalign=()
+for _p in "${card_popup[@]}"; do
+  case "$_p" in popup.align=*) ;; *) card_popup_noalign+=("$_p") ;; esac
+done
+unset _p
+
 # One sketchybar call per card, not one per row. Every invocation is a ~8ms
 # round trip to the running bar, and cold start was issuing ~90 of them before
 # the first paint; batching the loops here is most of that back.
@@ -186,9 +199,9 @@ card_rows_for() { # card_rows_for <item>
   sketchybar "${args[@]}"
 }
 
-##### Left: hyprspace workspaces | focused app #####
-# Five pips for the five workspaces alt-1..alt-5 reach, leftmost on the bar, so
-# "which workspace" then "which app" reads left to right in one glance.
+##### Left: workspaces | focused app #####
+# Five pips for the five workspaces alt-1..alt-5 reach, so "which workspace"
+# then "which app" reads left to right in one glance.
 #
 # The pips are fixed-width - all four are always drawn, occupancy is carried in
 # the colour - which makes them a stable anchor for everything to their right:
@@ -222,14 +235,15 @@ for sid in $SPACE_IDS; do
                                    background.corner_radius=4
                                    background.height=20
                                    background.drawing=off
-                                   click_script="$PLUGIN_DIR/hyprspace_workspace.sh focus $sid")
+                                   click_script="$PLUGIN_DIR/workspaces.sh focus $sid")
 done
 sketchybar "${spaces_args[@]}"
 
-# hyprspace fires this on every switch, with the new workspace in the payload
-# (exec-on-workspace-change in ~/.config/hyprspace/config.toml). Declared here
-# because a custom event has to exist before anything can subscribe to it.
-sketchybar --add event hyprspace_workspace_change
+# omniwm has no config-level callback for a workspace switch - it exposes an IPC
+# stream instead - so the watcher started at the end of this file translates that
+# stream into this trigger. Declared here because a custom event has to exist
+# before anything can subscribe to it.
+sketchybar --add event wm_workspace_change
 
 # Zero-width item that paints every pip, same shape as display_watch and
 # card_watch on the right. space_windows_change is what keeps the occupied /
@@ -242,57 +256,42 @@ sketchybar --add item space_watch left \
            --set space_watch drawing=off \
                              icon.drawing=off \
                              label.drawing=off \
-                             script="$PLUGIN_DIR/hyprspace_workspace.sh" \
-           --subscribe space_watch hyprspace_workspace_change \
+                             script="$PLUGIN_DIR/workspaces.sh" \
+           --subscribe space_watch wm_workspace_change \
                                    space_windows_change \
                                    front_app_switched \
                                    system_woke
 
-# Rule between the workspace cluster and the focused app. hyprspace_workspace.sh
+# Rule between the workspace cluster and the focused app. workspaces.sh
 # hides it alongside the pips when the window manager is not up, so a hidden
 # cluster never leaves a rule dangling against the bar's left edge.
 sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
 
+# Clicking it drops the focused app's own menu bar under the pointer, via
+# omniwm's open-menu-anywhere - the menus the real menu bar would show if it
+# were not auto-hidden behind the notch. The item that names the app is the
+# obvious place to hang them; this briefly lived on a dedicated  item, which
+# promised an Apple menu and delivered these instead.
+#
+# icon.color is load-bearing beyond the theme: app_menu.sh repaints it red when
+# the menu surface is unreachable and back to this colour when a click works, so
+# the two have to agree on $PINK. front_app.sh sets icon and label on a switch
+# but never the colour, which is what lets a red survive until the next good
+# click instead of being wiped by the next app switch.
 sketchybar --add item front_app left \
            --set front_app icon.color="$PINK" \
                            label.max_chars=25 \
                            label.font="$FONT_TEXT:Regular:13.0" \
                            script="$PLUGIN_DIR/front_app.sh" \
+                           click_script="$PLUGIN_DIR/app_menu.sh" \
            --subscribe front_app front_app_switched
 
-# Herdr flock: the agents the herdr session is running, one coloured digit per
-# state (plugins/herdr.sh renders, cards/herdr.sh details, click toggles the
-# card). Sits between front_app and meeting on purpose: meeting and productive
-# fit themselves every tick against whatever x this cluster pushes them to, so
-# the space comes out of their labels, not out of anything fixed-width.
-herdr_args=(--add item sep.herdr left
-            --set sep.herdr "${separator[@]}" drawing=off
-            --add item herdr left
-            --set herdr drawing=off
-                        icon="$(printf '\363\260\263\206')"
-                        icon.color="$FG_DIM"
-                        icon.padding_right=2
-                        label.drawing=off
-                        script="$PLUGIN_DIR/herdr.sh"
-                        click_script="$PLUGIN_DIR/card.sh herdr toggle")
-for st in blocked working 'done' idle unknown; do
-  herdr_args+=(--add item "herdr.$st" left
-               --set "herdr.$st" drawing=off
-                                 icon.drawing=off
-                                 label.font="$FONT_TEXT:Bold:$SZ_LABEL"
-                                 label.padding_left=2
-                                 label.padding_right=3
-                                 click_script="$PLUGIN_DIR/card.sh herdr toggle")
-done
-sketchybar "${herdr_args[@]}" --set herdr "${card_popup[@]}"
-# herdr_flock fires on every cluster show/hide (plugins/herdr.sh) so meeting
-# and productive re-fit immediately instead of on their next 60s tick. The
-# visibility memory must not survive a reload: initial paint races the cluster
-# into place after meeting/productive have already fit, and a stale "on" would
-# swallow the poke that repairs exactly that.
-rm -f "$SB_CACHE_DIR/herdr.visible" "$SB_CACHE_DIR/herdr.edge"
-sketchybar --add event herdr_flock \
-           --subscribe herdr system_woke mouse.exited.global
+# herdr_flock has to be declared here, ABOVE its subscribers: meeting and
+# productive both subscribe to it, and a custom event must exist before anything
+# can subscribe. The herdr cluster that fires it now lives on the right side of
+# the bar, next to media - see "Right: herdr flock" further down - but the event
+# declaration cannot follow it without breaking those two subscriptions.
+sketchybar --add event herdr_flock
 
 sketchybar --add item sep.now left --set sep.now "${separator[@]}"
 
@@ -358,9 +357,10 @@ sketchybar --add item clock right \
 # RIGHTMOST item, so a left-aligned popup grows off the screen. Measured at
 # 1728pt wide - the widest row ran to x=1800, losing 72pt of "13h / 34h logged
 # this week" past the edge. Aligning right anchors the popup's right edge to
-# the item's and it grows inwards (1473..1709, clear). The other three
-# right-side cards do not need this: media, cpu, wifi and caffeine all sit far
-# enough left that even their widest rows land inside the screen.
+# the item's and it grows inwards (1473..1709, clear). media, wifi and herdr do
+# not need it - they sit far enough left that even their widest rows land inside
+# the screen, and setting it there opens the card beside the item rather than
+# under it.
 sketchybar --set clock "${card_popup[@]}" popup.align=right \
            --subscribe clock mouse.exited.global
 
@@ -382,80 +382,52 @@ sketchybar --add item mic right \
 sketchybar --set mic "${card_popup[@]}" popup.align=right \
            --subscribe mic mouse.exited.global
 
-# Status: bluetooth | volume | battery
+sketchybar --add item sep.status right --set sep.status "${separator[@]}"
+
+##### Right group 3: volume | wifi | caffeine | battery #####
+# The machine's own state, as opposed to the two groups left of it: herdr/claude/
+# github are work that is happening, this is the laptop it is happening on.
+#
+# CREATED IN REVERSE of how it reads. The right cluster fills right-to-left, so
+# the first item added lands furthest right - battery here, volume last. Every
+# group below follows the same rule, which is why they look backwards in the
+# file and correct on screen.
 sketchybar --add item battery right \
            --set battery label.width="$W_PCT" \
                          label.align=left \
                          update_freq=120 \
                          click_script="open 'x-apple.systempreferences:com.apple.Battery-Settings.extension'" \
                          script="$PLUGIN_DIR/battery.sh" \
-           --subscribe battery system_woke power_source_change \
-           --add item volume right \
-           --set volume icon.color="$YELLOW" \
-                        label.width="$W_PCT" \
-                        label.align=left \
-           --subscribe volume volume_change mouse.clicked mouse.scrolled \
-           --add item bluetooth right \
-           --set bluetooth update_freq=60 \
-                           label.drawing=off \
-                           label.max_chars=0 \
-                           click_script="open 'x-apple.systempreferences:com.apple.BluetoothSettings'" \
-                           script="$PLUGIN_DIR/bluetooth.sh"
+           --subscribe battery system_woke power_source_change
 
 # Keep-awake toggle. Green mug = our own `caffeinate -i` is holding the machine
 # awake, dim = off. update_freq re-validates the PID, so a caffeinate killed
 # from outside (or a recycled PID) goes gray on its own within 30s.
+#
+# The click toggles directly rather than opening a card. A two-state switch
+# behind a popup meant two clicks and a read to do what the icon colour already
+# tells you, so caffeine_click.sh is wired straight to the item. It renders to
+# the literal `caffeine` item name (CAFFEINE_ITEM in caffeine.sh) rather than to
+# $NAME, which is what lets the same script serve a direct click here and still
+# work if it is ever put back behind a card row.
 sketchybar --add item caffeine right \
            --set caffeine update_freq=30 \
                           label.drawing=off \
                           script="$PLUGIN_DIR/caffeine.sh" \
-                          click_script="$PLUGIN_DIR/card.sh caffeine toggle"
-
-sketchybar --set caffeine "${card_popup[@]}" \
-           --subscribe caffeine mouse.exited.global
-
-sketchybar --add item sep.status right --set sep.status "${separator[@]}"
-
-# Network: down/up | wifi SSID
-#
-# net_up / net_down are stacked into one column to halve the horizontal space:
-# equal widths, opposite y_offset, and a negative padding_right on net_down
-# (the left one) pulls it exactly on top of net_up. -44 is one row's width
-# (icon 4+glyph+2, label 31+4) - re-measure it if the font or label.width changes.
-# Positive y_offset moves content UP (verified on screen; the docs do not say).
-#
-# wifi is added AFTER the rows on purpose: the right cluster fills right-to-left,
-# so adding later places it further left - i.e. left of the throughput column.
-sketchybar --add item net_up right \
-           --set net_up icon="󰁝" \
-                        icon.color="$ORANGE" \
-                        icon.font="$FONT_TEXT:Regular:$SZ_NET" \
-                        icon.padding_left=4 \
-                        icon.padding_right=2 \
-                        label="0B" \
-                        label.font="$FONT_TEXT:Regular:$SZ_NET" \
-                        label.width="$W_NET" \
-                        label.align=left \
-                        label.padding_right=4 \
-                        y_offset=6 \
-           --add item net_down right \
-           --set net_down icon="󰁅" \
-                          icon.color="$GREEN" \
-                          icon.font="$FONT_TEXT:Regular:$SZ_NET" \
-                          icon.padding_left=4 \
-                          icon.padding_right=2 \
-                          label="0B" \
-                          label.font="$FONT_TEXT:Regular:$SZ_NET" \
-                          label.width="$W_NET" \
-                          label.align=left \
-                          label.padding_right=4 \
-                          y_offset=-6 \
-                          padding_right="-$NET_ROW"
+                          click_script="$PLUGIN_DIR/caffeine_click.sh"
 
 # wifi_change is what actually moves this item, and it fires the moment the
 # association changes. The poll is only a backstop for a missed event, so it
 # runs at 60 rather than 15 - each tick spawned networksetup + ipconfig for an
 # SSID that had not changed.
+#
+# The throughput used to be two stacked bar items beside it, net_up over
+# net_down. They are rows in the wifi card now: a number that changes every
+# three seconds is something you look AT deliberately, not something worth a
+# permanent column next to the clock - and the pair cost ~44pt of bar for digits
+# that were mostly 0B. sb-helper still samples the interface at the same rate
+# and publishes the rates into helper-state.json; cards/wifi.sh reads them when
+# the card opens.
 sketchybar --add item wifi right \
            --set wifi update_freq=60 \
                       label.drawing=off \
@@ -466,56 +438,148 @@ sketchybar --add item wifi right \
 sketchybar --set wifi "${card_popup[@]}" \
            --subscribe wifi mouse.exited.global
 
+sketchybar --add item volume right \
+           --set volume icon.color="$YELLOW" \
+                        label.width="$W_PCT" \
+                        label.align=left \
+           --subscribe volume volume_change mouse.clicked mouse.scrolled
+
+# Divides the work group (herdr / claude / github) from the machine group. Named
+# sep.net from when it flanked the throughput items, which are gone; the name is
+# left alone because renaming it would break any saved --query and buys nothing.
 sketchybar --add item sep.net right --set sep.net "${separator[@]}"
 
-# System: cpu | mem
-# cpu / mem stacked into one column, exactly as net_up / net_down below:
-# equal widths, opposite y_offset, and a negative padding_right on mem (the
-# left one) pulls it back on top of cpu.
+# GitHub: orgs, recently-pushed repos, and PRs waiting on your review.
 #
-# bin/sb-helper paints both, so neither carries an update_freq. mem keeps
-# script=system.sh for its SUBSCRIPTIONS only - with no update_freq that script
-# runs on mouse.exited.global and nothing else, which is what still closes the
-# shared card. Its card_dispatch also used to drive the stuck-card watchdog on
-# every tick; the helper does that now, for all seven cards rather than the few
-# that happened to be polling.
-sketchybar --add item cpu right \
-           --set cpu icon="󰻠" \
-                     icon.color="$AQUA" \
-                     icon.font="$FONT_TEXT:Regular:$SZ_NET" \
-                     icon.padding_left=4 \
-                     icon.padding_right=2 \
-                     label="--" \
-                     label.font="$FONT_TEXT:Regular:$SZ_NET" \
-                     label.width="$W_SYS" \
-                     label.align=left \
-                     label.padding_right=4 \
-                     y_offset=6 \
-                     click_script="$PLUGIN_DIR/card.sh cpu toggle" \
-                     script="$PLUGIN_DIR/system.sh" \
-           --add item mem right \
-           --set mem icon="󰍛" \
-                     icon.color="$AQUA" \
-                     icon.font="$FONT_TEXT:Regular:$SZ_NET" \
-                     icon.padding_left=4 \
-                     icon.padding_right=2 \
-                     label="--" \
-                     label.font="$FONT_TEXT:Regular:$SZ_NET" \
-                     label.width="$W_SYS" \
-                     label.align=left \
-                     label.padding_right=4 \
-                     y_offset=-6 \
-                     padding_right="-$SYS_ROW" \
-                     click_script="$PLUGIN_DIR/card.sh cpu toggle" \
-                     script="$PLUGIN_DIR/system.sh"
+# The label is the count of review requests and is drawn ONLY when there are
+# any - an idle widget is a bare glyph, so a number appearing is itself the
+# signal. plugins/github.sh paints both, and colours the glyph by state: green
+# when clean, yellow when something is waiting on you, red when it could not
+# ask. That last one matters more than it looks - "no token", "token rejected",
+# "TLS proxy in the way" and "genuinely nothing to review" all produce an empty
+# list, and the card gives each its own sentence rather than letting a failure
+# render as an absence.
+#
+# 600s: four API calls a tick is 24 requests an hour against a 5000/hour limit,
+# and review requests do not arrive faster than you can act on them. The card
+# reads the cache and never the network, so this interval costs nothing on the
+# click path.
+#
+# It sits with herdr and claude, not with wifi and battery: all three are work
+# in flight - agents running, quota burning, reviews waiting - as against the
+# machine-state group to their right.
+#
+# The transport is `gh`, and it is currently BLOCKED on this machine. Aikido's
+# endpoint agent MITMs TLS and publishes its root only into the per-runtime PEM
+# bundles curl/node/python read; Go verifies through macOS Security.framework
+# and never sees it, so every gh call dies with x509 OSStatus -26276 while curl
+# on the same host succeeds. Until the root is trusted in the System keychain
+# this item sits red and its card says so in as many words. Do not "fix" it by
+# switching to curl - that was tried and deliberately reverted; see the
+# transport note at the top of plugins/github.sh.
+sketchybar --add item github right \
+           --set github icon="$(printf '\357\202\233')" \
+                        icon.color="$FG_DIM" \
+                        icon.font="$FONT_ICON:Regular:14.0" \
+                        label.drawing=off \
+                        label.font="$FONT_TEXT:Bold:$SZ_LABEL" \
+                        label.padding_right=4 \
+                        update_freq=600 \
+                        script="$PLUGIN_DIR/github.sh" \
+                        click_script="$PLUGIN_DIR/card.sh github toggle"
 
-sketchybar --set cpu "${card_popup[@]}" \
-           --subscribe cpu mouse.exited.global
-# mem is stacked ON TOP of cpu, so the pointer lands on mem, not cpu. Both open
-# the same card - system.sh dispatches either to "cpu".
-sketchybar --subscribe mem mouse.exited.global
+sketchybar --set github "${card_popup[@]}" popup.align=right \
+           --subscribe github mouse.exited.global
 
-sketchybar --add item sep.system right --set sep.system "${separator[@]}"
+# Herdr flock: the agents the herdr session is running, one coloured digit per
+# state (plugins/herdr.sh renders, cards/herdr.sh details, click toggles the
+# card), plus the Claude weekly-usage figure.
+#
+# Created in REVERSE of the reading order. The right cluster fills right-to-left
+# (see "added right-to-left" above), so the first item added is the rightmost -
+# and the intended reading is `media | herdr  1 2 3 | claude`, which means the
+# claude digit goes in first and sep.herdr last.
+#
+# It used to sit on the left between front_app and meeting, where its width
+# pushed those two around and herdr_flock existed to make them re-fit. Over here
+# it pushes nothing: meeting and productive are on the other side of the bar.
+# The event still fires and they still listen, which is now a no-op on their
+# geometry - harmless, and left in place because notch_guard in herdr.sh still
+# measures their edges for the real notch collision.
+herdr_args=()
+# The Claude weekly figure. NOT painted by sb-helper, unlike the five state
+# digits - it is a shell script reading transcript files, which is the wrong
+# shape for the helper's tick loop. That means it needs its own update_freq:
+# `herdr` itself deliberately has none (check.sh asserts "herdr has no poll
+# timer"), so a field painted only alongside it would never refresh.
+#
+# It also does NOT hide with the flock. herdr.sh's hide path enumerates the five
+# state items by name and leaves this one alone, which is the behaviour we want:
+# weekly usage is worth seeing whether or not any agent happens to be running.
+#
+# Named `claude`, NOT `herdr.claude`, even though it sits inside that cluster.
+# card.sh derives everything from the item name - it sources cards/$ITEM.sh,
+# addresses $ITEM.pop.$N and stamps card-$ITEM.at - so a dotted name would send
+# it looking for cards/herdr.claude.sh. The name is the card's identity, not a
+# statement about which cluster the item is drawn next to.
+herdr_args+=(--add item claude right
+             --set claude icon="$(printf '\363\260\232\251')"
+                          icon.color="$VIOLET"
+                          icon.font="$FONT_ICON:Regular:12.0"
+                          icon.padding_left=6
+                          icon.padding_right=3
+                          label.font="$FONT_TEXT:Bold:$SZ_LABEL"
+                          label.padding_right=4
+                          update_freq=300
+                          script="$PLUGIN_DIR/claude_usage.sh"
+                          click_script="$PLUGIN_DIR/card.sh claude toggle")
+for st in unknown idle 'done' working blocked; do
+  herdr_args+=(--add item "herdr.$st" right
+               --set "herdr.$st" drawing=off
+                                 icon.drawing=off
+                                 label.font="$FONT_TEXT:Bold:$SZ_LABEL"
+                                 label.padding_left=2
+                                 label.padding_right=3
+                                 click_script="$PLUGIN_DIR/card.sh herdr toggle")
+done
+herdr_args+=(--add item herdr right
+             --set herdr drawing=off
+                         icon="$(printf '\363\260\263\206')"
+                         icon.color="$FG_DIM"
+                         icon.padding_right=2
+                         label.drawing=off
+                         script="$PLUGIN_DIR/herdr.sh"
+                         click_script="$PLUGIN_DIR/card.sh herdr toggle"
+             --add item sep.herdr right
+             --set sep.herdr "${separator[@]}" drawing=off)
+# popup.align is left unset here - not "left", UNSET - so sketchybar places the
+# card itself rather than anchoring it to an edge of the item.
+#
+# Both explicit values were tried and both are wrong for this one. align=right
+# anchors the popup's right edge to the item's and grows it leftward, which put
+# the card BESIDE the widget instead of under it. align=left grows it rightward
+# from the item, and this card is now the widest on the bar - 58 characters of
+# fixed-pitch rows, up to 28 of them - so from the herdr cluster's x it runs
+# straight off the right of the screen. Letting sketchybar choose is the only
+# option that survives the card changing width with the size of the flock.
+sketchybar "${herdr_args[@]}" --set herdr "${card_popup_noalign[@]}"
+
+# The claude card. popup.align=right here, unlike herdr immediately above, and
+# the difference is the popup's WIDTH rather than the item's position: the usage
+# card runs to ~46 characters against herdr's short `<title> · <cwd>` rows, so
+# anchored left from mid-cluster it reaches past wifi and battery toward the
+# screen edge. Same reason the clock documents further up.
+#
+# No card_rows_for here: `claude` is in $CARD_ITEMS, and the loop near the end
+# of this file creates one set of rows for every item in it. Calling it here as
+# well would build all ten rows twice.
+sketchybar --set claude "${card_popup[@]}" popup.align=right \
+           --subscribe claude mouse.exited.global
+
+# The visibility memory must not survive a reload: initial paint races the
+# cluster into place, and a stale "on" would swallow the poke that repairs it.
+rm -f "$SB_CACHE_DIR/herdr.visible" "$SB_CACHE_DIR/herdr.edge"
+sketchybar --subscribe herdr system_woke mouse.exited.global
 
 # Media (hides itself when nothing is playing)
 #
@@ -577,14 +641,28 @@ for c in $CARD_ITEMS; do card_rows_for "$c"; done
 #
 # The old instance is killed first: a reload re-runs this file, and two helpers
 # would both hold timers and fight over the same items - and the second would
-# fail to claim the bootstrap name (kr=1101), silently losing the volume
-# events. Matched with pkill -x on the process NAME, not -f on a path: this
-# config is reached through ~/.config/sketchybar, a symlink, so the path a
-# running helper reports is not the path this script would build.
+# fail to claim the bootstrap name (kr=1101), silently losing the volume events.
+#
+# ps + kill, NOT pkill. This said `pkill -x sb-helper` and it was observed
+# FAILING SILENTLY on this machine, leaving two helpers running for nearly two
+# hours - pkill and pgrep both depend on sysmond, which has been seen refusing
+# ("sysmond service not found: Cannot get process list") while ps kept working.
+# The failure mode is invisible from here: pkill exits 0 having killed nothing,
+# a second helper starts, and the loser of the bootstrap race stops delivering
+# volume scroll events with no error anywhere. Same reasoning, and the same
+# fix, as the omniwm watcher at the end of this file and as bin/wmswitch.sh.
+#
+# Matched on the process NAME rather than a path: this config is reached through
+# ~/.config/sketchybar, a symlink, so the path a running helper reports is not
+# the path this script would build. Anchored on / so a directory containing the
+# word cannot match.
 # Backgrounded and disowned - sketchybar waits on its config script, so a
 # foreground helper would hang the reload forever.
 if [ -x "$CONFIG_DIR/bin/sb-helper" ]; then
-  pkill -x sb-helper 2>/dev/null
+  for _h in $(ps -Ao pid=,comm= | awk '$0 ~ /\/sb-helper$/ {print $1}'); do
+    kill "$_h" 2>/dev/null
+  done
+  unset _h
   "$CONFIG_DIR/bin/sb-helper" "$SB_HELPER_NAME" >/dev/null 2>&1 &
   disown
 else
@@ -592,11 +670,53 @@ else
   # ~/.cache/sketchybar/build-sb-helper.err). The items it owns would sit at
   # "--" forever, so fall back to the shell plugins by restoring their timers.
   printf 'sketchybar: bin/sb-helper missing, falling back to shell plugins\n' >&2
-  sketchybar --set mem      update_freq=10 script="$PLUGIN_DIR/system.sh" \
-             --set net_down update_freq=3  script="$PLUGIN_DIR/network.sh" \
-             --set mic      update_freq=3  script="$PLUGIN_DIR/mic.sh" \
-             --set volume   script="$PLUGIN_DIR/volume.sh" \
-             --set herdr    update_freq=5  script="$PLUGIN_DIR/herdr.sh"
+  # No net_down line any more: the throughput is a card row, and cards/wifi.sh
+  # reads the helper's state file. Without the helper that row simply reports
+  # nothing, which is the honest outcome - there is no shell sampler left on the
+  # bar to restore a timer to.
+  sketchybar --set mic    update_freq=3 script="$PLUGIN_DIR/mic.sh" \
+             --set volume script="$PLUGIN_DIR/volume.sh" \
+             --set herdr  update_freq=5 script="$PLUGIN_DIR/herdr.sh"
+fi
+
+##### omniwm event watcher #####
+# omniwm has no config-level callback for a workspace switch - it exposes an IPC
+# stream instead - so one long-lived `omniwmctl watch` translates that stream
+# into the wm_workspace_change trigger the pip item is already subscribed to.
+#
+# Killed first for the same reason sb-helper is: a reload re-runs this file, and
+# two watchers would both fire the trigger on every switch. Matched on ARGUMENTS,
+# because the process name is just omniwmctl and only the argv identifies this
+# particular watcher - and matched through ps rather than pkill, which depends on
+# sysmond and has been seen failing on this machine with "sysmond service not
+# found" while ps kept working. A silent failure here leaves watchers stacking up
+# on every reload.
+#
+# --reconnect is what makes this survive an omniwm relaunch: the CLI retries the
+# handshake with a 0.5s-to-5s backoff and re-requests initial snapshots, so the
+# pips resynchronise instead of freezing on whatever was last painted. Placed
+# BEFORE --exec deliberately - the docs are explicit that a flag after --exec
+# belongs to the child command.
+#
+# windows-changed rides along with active-workspace so the occupied/empty
+# shading keeps up with windows opening and closing, not just with switches. It
+# is the precise version of the space_windows_change the item also subscribes
+# to, which fires for any app anywhere.
+#
+# IPC is OFF by default in omniwm (Settings -> Enable IPC). Without it this
+# watcher exits immediately, the trigger never fires, and workspaces.sh finds no
+# focused workspace and hides the cluster - which is the honest outcome, but
+# `omniwmctl ping` is the thing to check when the pips are missing.
+for _w in $(ps -Ao pid=,args= | awk '/omniwmctl watch active-workspace/ && !/awk/ {print $1}'); do
+  kill "$_w" 2>/dev/null
+done
+unset _w
+if command -v omniwmctl >/dev/null 2>&1; then
+  omniwmctl watch active-workspace,windows-changed --reconnect \
+            --exec sketchybar --trigger wm_workspace_change >/dev/null 2>&1 &
+  disown
+else
+  printf 'sketchybar: omniwmctl is not on PATH - the workspace pips will not repaint\n' >&2
 fi
 
 ##### First paint #####

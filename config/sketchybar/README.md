@@ -53,9 +53,7 @@ packing, no reply awaited. It also replaces their data sources with frameworks:
 
 | Item | Was | Now |
 |---|---|---|
-| `cpu` | `ps -A` summed in awk | `host_statistics64` tick deltas |
-| `mem` | `memory_pressure` | unchanged, deliberately (see below) |
-| `net_up` / `net_down` | `netstat -ibn` | `getifaddrs` + `SCDynamicStore` |
+| network throughput | `netstat -ibn` | `getifaddrs` + `SCDynamicStore`, and **published** to `helper-state.json` for the Wi-Fi card rather than painted on the bar |
 | `mic` | `bin/mic-active` every 3s | CoreAudio listener — **push, not poll** |
 | `volume` | 3 × `osascript` (~107ms each) | CoreAudio, and events over mach |
 | `herdr` + digits | `bash` + `jq` per tick | one `herdr agent list`, parsed natively |
@@ -89,7 +87,7 @@ path, and `bin/sb-helper --selftest` prints every reading as `key=value`.
 | Grant | Needed for | Without it |
 |---|---|---|
 | **Microphone** (your terminal, once) | — | Nothing; the mic *indicator* needs no grant |
-| **Accessibility** → sketchybar | `Lock` and `Force Quit` in the  menu | Those two rows silently do nothing; the other eight work |
+| **Accessibility** → sketchybar | Nothing currently | The  menu needs no grant here — it goes through omniwm, which holds its own |
 | **Screen Recording** → sketchybar | Nothing currently | Only needed if you add `alias` items to mirror menu bar extras |
 
 Add the CLI binary itself, not a `.app`: `$(brew --prefix)/bin/sketchybar`.
@@ -97,30 +95,52 @@ Restart with `brew services restart sketchybar` after granting.
 
 ## Layout
 
-**Left** — hyprspace workspaces (five pips, cyan pill on the focused one,
-bright if it holds windows, dim if empty; click to switch) · focused app ·
-herdr flock (agent count per state: red blocked / blue working /
-green done / dim idle; click for the card, a row click focuses that agent) ·
-current meeting · productive timer
-**Right** — now playing · CPU / memory · network (stacked ↑/↓) + Wi-Fi ·
-Bluetooth / volume / battery · mic-in-use · clock
+**Left** — workspaces (five pips, cyan pill on the current one, bright if it
+holds windows, dim if empty; click to switch) · focused app (click for its
+menus) · current meeting · productive timer
+**Right** — now playing · herdr flock (agent count per state: red blocked /
+blue working / green done / dim idle; click for the card, a row click focuses
+that agent) + Claude weekly usage · Wi-Fi · keep-awake · volume / battery ·
+mic-in-use · clock
 
-Interactive: click a workspace pip to switch to it (the same thing `alt-<n>`
-does), volume to mute (scroll to change), Bluetooth to toggle power,
-now-playing to play/pause, CPU/memory for Activity Monitor, clock for the ISO
-week + this week's hours + jump-offs to the calendar, timesheet and Focus note,
-Wi-Fi and battery for their Settings panes, mic for the privacy pane.
+Interactive: click the focused-app item to drop **its own** menu bar under the
+pointer (see below), a workspace pip to switch to it (the same thing
+`alt-<n>` does), volume to mute (scroll to change), now-playing to play/pause
+or to add the current track to this year's Spotify playlist, the mug to toggle
+keep-awake directly, clock for the ISO week + this week's hours + jump-offs to
+the calendar, timesheet and Focus note, Wi-Fi and battery for their Settings
+panes, mic for the privacy pane.
 
 The mic indicator is hidden unless something is actually capturing, the
 now-playing item hides itself when nothing is playing, and the workspace pips
-hide themselves if the hyprspace server is not up.
+hide themselves if omniwm's IPC is not answering.
 
-The pips come from `hyprspace` (an AeroSpace fork) and cover the workspaces
-bound in `~/.config/hyprspace/config.toml` — `$SPACE_IDS` in `colors.sh` is the
-one place that set is named. That config's `exec-on-workspace-change` is what
-triggers `hyprspace_workspace_change` on the bar; without it the pips only
-repaint on the catch-up events, so a switch to an empty workspace would leave
-the pill behind. `check.sh` asserts both.
+Clicking the focused-app item runs `plugins/app_menu.sh` →
+`omniwmctl command open-menu-anywhere`, which walks that application's
+`AXMenuBar` and renders it at the pointer — the menu the real menu bar would
+show if it were not auto-hidden behind the notch. It is the same command as
+omniwm's `Control+Option+M` hotkey, so the bar and the keyboard cannot drift,
+and it needs no Accessibility grant of its own: omniwm already holds one and
+cannot tile without it. It does need omniwm's IPC, the same dependency the
+workspace pips have.
+
+This briefly lived on a dedicated  item at the far left. That was the wrong
+affordance twice over — the glyph promised an Apple menu and delivered the
+focused app's, and the item that already names the app was sitting next to it
+doing nothing on click. If the menu surface is unreachable the app icon turns
+red and clears on the next click that works, so `app_menu.sh` and `sketchybarrc`
+have to agree that `$PINK` is the healthy colour.
+
+The pips cover the workspaces omniwm binds to `Option+1`..`Option+9`, of which
+the bar draws the first five — `$SPACE_IDS` in `colors.sh` is the one place
+that set is named, and widening it there is the only edit more pips need.
+`check.sh` asserts the bindings against `~/.config/omniwm/settings.toml`.
+
+omniwm has no config-level callback for a workspace switch, so `sketchybarrc`
+starts one long-lived `omniwmctl watch` that turns its IPC stream into the
+`wm_workspace_change` trigger. Without it the pips only repaint on the catch-up
+events, so a switch to an empty workspace would leave the pill behind.
+`check.sh` asserts the watcher is running.
 
 ## Customising
 

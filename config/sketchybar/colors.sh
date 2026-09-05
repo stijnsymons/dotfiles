@@ -64,21 +64,28 @@ export SB_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/sketchybar"
 # rest of that text into the action field. Strip the separators at the source.
 card_text() { printf '%s' "$1" | tr -d '\011\012\015'; }
 
-# The hyprspace workspaces the bar draws a pip for, and the only ones
-# ~/.config/hyprspace/config.toml binds (alt-1..alt-5). hyprspace auto-creates
-# a further workspace when a window is sent past the last bound one, so this is
-# a deliberate window onto the ones you can actually reach by keyboard, not a
-# mirror of everything that exists. sketchybarrc creates the pips,
-# plugins/hyprspace_workspace.sh paints them and check.sh asserts both - naming
-# the set once is what stops those three from drifting apart, and is the only
-# edit a sixth workspace needs on this side.
+# There used to be an $SB_WM switch here, naming hyprspace or omniwm, and every
+# workspace-aware part of the bar branched on it. omniwm is now the only window
+# manager, so the switch and both backends are gone - plugins/workspaces.sh and
+# bin/focus-or-open.sh talk to omniwmctl directly. Nothing reads $SB_WM any more;
+# if you find something that does, it is stale.
+
+# The workspaces the bar draws a pip for, and the ones omniwm binds to
+# Option+1..Option+9. omniwm defines nine and the bar shows the first five: the
+# pips are a fixed-width anchor for everything to their right, and nine of them
+# is a lot of bar spent on workspaces that are usually empty. Widen this to
+# "1 2 3 4 5 6 7 8 9" to show them all - sketchybarrc creates one pip per id,
+# plugins/workspaces.sh paints one per id and check.sh asserts both, so this
+# line is the only edit that needs.
 export SPACE_IDS="1 2 3 4 5"
 
 # The items that own a hover card, and how many rows each one has room for.
 # sketchybarrc pre-creates the rows, card.sh closes the others when one opens
 # and check.sh asserts both - naming the set once is what stops those three
 # from drifting apart.
-export CARD_ITEMS="meeting productive media cpu wifi caffeine herdr clock mic"
+# caffeine left this set when its click became a direct toggle rather than a
+# card, and cpu left it with the cpu/mem item itself.
+export CARD_ITEMS="meeting productive media wifi herdr claude github clock mic"
 export CARD_ROWS=8
 
 # The events that stand in for the global click sketchybar does not have.
@@ -137,6 +144,30 @@ export CARD_AWAY_EVENTS="front_app_switched space_change display_change system_w
 card_rows_max() { # card_rows_max <item>
   case "$1" in
     productive|meeting) printf '16\n' ;;
+    # 10, not the default 8: the full card is 9 rows - header, weekly figure,
+    # progress bar, pace, the "last 7 days" heading, three chart rows, and the
+    # session figure. At 8 the session row would be silently truncated off the
+    # bottom, which is the failure card.sh cannot report. One row of slack.
+    claude)             printf '10\n' ;;
+    # Also 10, and for the same reason: the full card is 9 rows - the date, the
+    # logged/pace line, the progress bar, three chart rows, and three jump-offs.
+    # At the default 8 the Focus-note row fell off the bottom silently, which is
+    # the one failure card.sh cannot report.
+    clock)              printf '10\n' ;;
+    # 28. This card is a block per workspace - a group row, an optional repo
+    # sub-line, and a row per agent - so its height scales with the flock rather
+    # than being fixed. Today's real flock is 24 rows; a heavy day (12 agents,
+    # 10 workspaces, some with linked worktrees) reaches ~29. The card reads this
+    # number itself, cuts to max-1, walks the cut back to a group boundary so a
+    # header is never orphaned, and spends the last row saying what it hid - so
+    # this is a ceiling on the popup's height, not a silent truncation point.
+    herdr)              printf '28\n' ;;
+    # 19: a provenance header, a reason row when something is wrong, and three
+    # LABELLED dividers over the personal namespace + 3 orgs, 5 repos and 5 PRs.
+    # The section caps are enforced twice - once by plugins/github.sh writing the
+    # cache and again by the card's own loops - so a fourth org cannot arrive at
+    # render time and push the last PR silently off the bottom.
+    github)             printf '19\n' ;;
     *)                  printf '%s\n' "$CARD_ROWS" ;;
   esac
 }

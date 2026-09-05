@@ -35,11 +35,19 @@ ART_INDENT=12  # card_rows_for's plain-text indent, restored when there is no co
 # missing key as the four characters "null", not as nothing at all.
 art_has() { [ -n "${1:-}" ] && [ "$1" != "null" ]; }
 
-# How many rows cards/media.sh will draw, which is how tall the popup will be,
-# which is the side the cover has to be to fill the gutter without being
-# clipped. Title and the transport control are always drawn; artist and album
-# only when the player published them. check.sh asserts this still matches what
-# the card actually emits - nothing in the drawing path would notice if it drifted.
+# A FLOOR for how tall the popup will be, no longer an exact prediction of it.
+#
+# It was exact while the card was title + artist + album + transport. It cannot
+# be any more: the transport row vanishes once the track is in this year's
+# playlist, the add row is always drawn, and the outcome toast appears for 30s
+# after a click - none of which the 15s tick can see. cards/media.sh therefore
+# re-runs art_show with its real emitted count when the card opens, and this
+# only has to get the tick's first paint close enough that a cover assigned
+# before the first open is not wildly wrong.
+#
+# Kept rather than deleted because the tick still needs SOME size at the moment
+# it writes the image, and 2 + artist + album is the smallest the card can be
+# while something is playing.
 art_rows() { # art_rows <artist> <album>
   local n=2
   art_has "${1:-}" && n=$(( n + 1 ))
