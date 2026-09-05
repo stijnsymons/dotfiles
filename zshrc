@@ -235,4 +235,20 @@ export REQUESTS_CA_BUNDLE="/Library/Application Support/AikidoSecurity/EndpointP
 export POETRY_CERTIFICATES_PYPI_CERT="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-pip-combined-ca.pem"
 export UV_SYSTEM_CERTS=true
 # aikido-endpoint-pip-cert-config-end
+
+# NOTE for whoever hits this next: Aikido writes a cert block above for Ruby,
+# curl/OpenSSL, Node and Python - but NOT for Go, and Go needs one.
+#
+# Go on macOS verifies through Security.framework and ignores SSL_CERT_FILE, so
+# it is the one class of tool here that never sees Aikido's PEM bundle. The
+# symptom is specific and misleading: `gh auth login` fails with
+#   tls: failed to verify certificate: x509: OSStatus -26276
+# while `curl https://api.github.com` on the same host succeeds a second later.
+# It reads as a GitHub or a network fault and is neither.
+#
+# There is no environment variable that fixes this. GODEBUG=x509usefallbackroots=1
+# was tried and does NOT work - it swaps in Go's bundled Mozilla roots, which by
+# definition do not contain a private interception root, so it fails identically.
+# The real fix is the Aikido root being trusted in the System keychain, which is
+# an MDM/IT matter rather than a dotfiles one.
 }
