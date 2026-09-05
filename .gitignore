@@ -6,3 +6,4 @@ vim/plugged
 *.log
 *.private
 *.old
+*.swp
