@@ -1,0 +1,22 @@
+{
+  "title": "Ghostty new window",
+  "rules": [
+    {
+      "description": "Ghostty: Option + Return -> new window",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": {
+            "key_code": "return_or_enter",
+            "modifiers": { "mandatory": ["option"] }
+          },
+          "to": [
+            {
+              "shell_command": "/Users/stijn/.config/sketchybar/bin/ghostty-new-window.sh"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "title": "Right Command",
+  "rules": [
+    {
+      "description": "Right Command -> Hyper on hold, Right Command on tap",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": {
+            "key_code": "right_command",
+            "modifiers": { "optional": ["any"] }
+          },
+          "to": [
+            {
+              "key_code": "left_shift",
+              "modifiers": ["left_control", "left_option", "left_command"]
+            }
+          ],
+          "to_if_alone": [{ "key_code": "right_command" }]
+        }
+      ]
+    }
+  ]
+}
