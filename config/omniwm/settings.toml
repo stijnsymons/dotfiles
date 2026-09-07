@@ -3,8 +3,7 @@ monitorDwindleOverrides = []
 monitorGapOverrides = []
 monitorNiriOverrides = []
 monitorOrientationOverrides = []
-monitorRoutingOverrides = []
-schemaVersion = 2
+schemaVersion = 3
 
 [appearance]
 mode = "automatic"
@@ -135,6 +134,7 @@ position = "center"
 widthPercent = 50.0
 
 [routing]
+arrangements = []
 mode = "macOS"
 
 [scratchpads]
@@ -596,7 +596,7 @@ binding = "Unassigned"
 id = "moveColumnToWorkspace.8"
 
 [[hotkeys]]
-binding = "Option+Shift+H"
+binding = "Unassigned"
 id = "move.left"
 
 [[hotkeys]]
@@ -608,7 +608,7 @@ binding = "Option+Shift+K"
 id = "move.up"
 
 [[hotkeys]]
-binding = "Option+Shift+L"
+binding = "Unassigned"
 id = "move.right"
 
 [[hotkeys]]
@@ -900,11 +900,11 @@ binding = "Unassigned"
 id = "moveToRoot"
 
 [[hotkeys]]
-binding = "Unassigned"
+binding = "Option+Shift+L"
 id = "toggleSplit"
 
 [[hotkeys]]
-binding = "Unassigned"
+binding = "Option+Shift+H"
 id = "swapSplit"
 
 [[hotkeys]]
