@@ -1078,6 +1078,38 @@ case "${PS_W:-0}" in
     done ;;
 esac
 
+echo "reserved inset:"
+# The bar draws in space macOS does not reserve for it, so omniwm has to. On an
+# external display visibleFrame equals frame - nothing is reserved at all - and
+# with topmost=off every tiled window covers the bar completely. The symptom is
+# "the bar is gone on my monitor", the cause is a number in a file this repo
+# does not contain, and nothing else in this suite would notice.
+#
+# Asserted against $BAR_H - the LIVE bar's height, queried at the top of this
+# file - rather than a literal 38, so a re-measured bar cannot drift away from
+# the gap that protects it. >= rather than ==, so scoping this per monitor later
+# (monitorGapOverrides, or omniwm's Settings UI) still passes.
+OW_GAPS="$(omniwmctl query displays --fields name,outer-gap-top --format json 2>/dev/null \
+           | jq -r '..|objects|select(has("outerGapTop"))|"\(.outerGapTop)\t\(.name)"' 2>/dev/null)"
+if [ -z "$OW_GAPS" ]; then
+  bad "omniwm not answering, cannot verify the bar's reserved inset"
+elif [ -z "$BAR_H" ] || [ "$BAR_H" = "null" ]; then
+  # The bar itself is the reference, so without it there is nothing to compare
+  # against and claiming a pass would be a tautology.
+  bad "cannot read the bar's height, so the reserved inset is unverifiable"
+else
+  while IFS="$(printf '\t')" read -r gap name; do
+    [ -n "$gap" ] || continue
+    if [ "${gap%%.*}" -ge "${BAR_H%%.*}" ] 2>/dev/null; then
+      ok "$name reserves ${gap%%.*}pt, bar is ${BAR_H%%.*}pt"
+    else
+      bad "$name reserves ${gap%%.*}pt but the bar is ${BAR_H%%.*}pt - windows will cover it"
+    fi
+  done <<OWEOF
+$OW_GAPS
+OWEOF
+fi
+
 echo "workspaces:"
 # The bindings the pips claim to be a legend for. omniwm keeps its hotkeys in
 # ~/.config/omniwm/settings.toml as [[hotkeys]] blocks pairing an `id` with a

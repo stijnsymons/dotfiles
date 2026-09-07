@@ -88,10 +88,33 @@ W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
 # show_in_fullscreen=on puts the bar on fullscreen SPACES; whether it then
 # draws above the fullscreen window still depends on topmost.
 #
-# The real fix is a window manager reserving the inset (AeroSpace
-# gaps.outer.top per monitor, or yabai external_bar) - macOS will not reserve
-# space for a third-party bar on its own. Note SketchyBar's own docs require
-# "Displays have separate Spaces" ON, which this machine has OFF.
+# THE REAL FIX IS APPLIED, AND IT IS NOT IN THIS REPO. macOS will not reserve
+# space for a third-party bar, so the window manager has to. omniwm does it via
+#
+#   [gaps.outer]
+#   top = 38.0        # ~/.config/omniwm/settings.toml
+#
+# which is the one setting standing between this bar and being invisible behind
+# every tiled window on an external display. Measured after setting it: tiled
+# windows on the DELL end at y+h = 1654 of 1692, i.e. exactly 38pt clear.
+#
+# Why it matters on the external and not the built-in: macOS reserves a top
+# inset only where it draws the menu bar, and on the built-in it is the NOTCH
+# doing the reserving (frame 1117 vs visibleFrame 1085). An external screen
+# reserves nothing at all - visibleFrame equals frame - so without this gap
+# windows tile from y=0 and swallow the bar whole.
+#
+# It is GLOBAL rather than per-monitor, which costs ~32pt of the built-in when
+# undocked: the notch already reserves 32 there, and this adds 38 on top. The
+# per-monitor form is `monitorGapOverrides`, and four plausible TOML shapes for
+# it (monitorName / displayName / name keys, outerGapTop / top values) were all
+# parsed without complaint and all silently ignored, so the schema is not
+# guessable from outside. Set it through omniwm's own Settings UI if the built-in
+# space matters; check.sh asserts only that SOME top gap >= the bar height
+# exists, so a per-monitor fix will not trip it.
+#
+# Note SketchyBar's own docs require "Displays have separate Spaces" ON, which
+# this machine has OFF.
 #
 # display=main draws the bar on the PRIMARY display only - the one macOS gives
 # the menu bar to. Make the external screen primary (System Settings ->
