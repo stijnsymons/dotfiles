@@ -117,8 +117,15 @@ card_rows() {
   up="$(helper_reading net_up_human)"
   wifi_row '󰓅' "$AQUA" "Throughput" "↓ ${down:-?}/s  ↑ ${up:-?}/s"
 
+  # The three address rows copy their value on click. An address is read off
+  # this card in order to be typed somewhere else, so the click that dismisses
+  # the card may as well carry the value with it. plugins/copy.sh rather than an
+  # inline pipe: card.sh's action sanitiser drops anything containing one, and a
+  # cleared action fails silently. $CONFIG_DIR is expanded HERE so the action
+  # string holds a literal path - a dollar sign is rejected by the same filter.
   ip="$(ipconfig getifaddr "$iface" 2>/dev/null)"
-  [ -n "$ip" ] && wifi_row '󰩟' "$FG" "Local  ·  $iface" "$ip"
+  [ -n "$ip" ] && wifi_row '󰩟' "$FG" "Local  ·  $iface" "$ip" \
+                           "$CONFIG_DIR/plugins/copy.sh '$ip'"
 
   # The public address. extip.sh answers from its cache in the common case and
   # prints nothing at all when it has never reached a provider, which is why the
@@ -131,10 +138,12 @@ card_rows() {
   else
     extip="$("$CONFIG_DIR/plugins/extip.sh" 2>/dev/null)"
   fi
-  [ -n "$extip" ] && wifi_row '󰖟' "$VIOLET" "Public" "$extip"
+  [ -n "$extip" ] && wifi_row '󰖟' "$VIOLET" "Public" "$extip" \
+                              "$CONFIG_DIR/plugins/copy.sh '$extip'"
 
   router="$(route -n get default 2>/dev/null | awk '/gateway:/{print $2}')"
-  [ -n "$router" ] && wifi_row '󰑩' "$FG_DIM" "Gateway" "$router"
+  [ -n "$router" ] && wifi_row '󰑩' "$FG_DIM" "Gateway" "$router" \
+                               "$CONFIG_DIR/plugins/copy.sh '$router'"
   dns="$(scutil --dns 2>/dev/null | awk '/nameserver\[0\]/{print $3; exit}')"
   [ -n "$dns" ] && wifi_row '󰇖' "$FG_DIM" "DNS" "$dns"
 
