@@ -132,6 +132,22 @@
                             },
                             {
                                 "from": {
+                                    "key_code": "z",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "option"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh dev.zed.Zed"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
                                     "key_code": "m",
                                     "modifiers": {
                                         "mandatory": [
@@ -163,6 +179,43 @@
                                 "to": [
                                     {
                                         "shell_command": "/Users/stijn/.config/sketchybar/bin/ghostty-new-window.sh"
+                                    }
+                                ],
+                                "type": "basic"
+                            }
+                        ]
+                    },
+                    {
+                        "description": "OmniWM: Option + -/= -> layout-aware size step",
+                        "manipulators": [
+                            {
+                                "from": {
+                                    "key_code": "hyphen",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "option"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/omniwm-size.sh decrease"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "equal_sign",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "option"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/omniwm-size.sh increase"
                                     }
                                 ],
                                 "type": "basic"

@@ -111,7 +111,7 @@
   "theme": {
     "mode": "system",
     "light": "Ayu Light",
-    "dark": "Ayu Mirage",
+    "dark": "Ayu Dark",
   },
   "agent_servers": {
     "claude-acp": {

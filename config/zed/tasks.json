@@ -1,15 +1,45 @@
 // Zed custom tasks — run via cmd-shift-p → "task: spawn"
 [
   {
-    "label": "Preview Markdown (leaf)",
-    "command": "leaf",
-    "args": ["--watch", "$ZED_FILE"],
-    // open in the right terminal dock (matches terminal.dock = "right")
-    "reveal": "always",
-    "reveal_target": "dock",
-    // reuse one terminal; quitting leaf (q) hides the pane again
+    "label": "Preview Markdown (QuickLook)",
+    // Renders through the QuickLook extension inside QLMarkdown.app, so the
+    // preview obeys whatever is set in that app: mermaid and MathJax (both
+    // linked from jsdelivr, so diagrams need a network), inline images, emoji
+    // glyphs, syntax highlighting.
+    //
+    // Deliberately NOT `qlmarkdown_cli`: with syntax highlighting on - the
+    // saved setting - it hangs forever instead of emitting HTML, because it
+    // looks for its highlight themes under a "main app path" that points at
+    // $HOME ("ERROR FOR theme themes/acid.theme"), and passing --app doesn't
+    // help. The extension reads them from its own bundle and is unaffected.
+    "command": "qlmanage",
+    "args": ["-p", "$ZED_FILE"],
+    // qlmanage previews the file on disk, so write the buffer first rather
+    // than racing the 1s autosave delay.
+    "save": "current",
+    // The output is a GUI panel, so the terminal pane has nothing worth
+    // showing - but keep it on failure, which is the only way to see why
+    // QuickLook refused the file.
+    "reveal": "never",
+    "hide": "on_success",
+    // qlmanage blocks until the panel closes (esc or space), and a second
+    // panel over the first is not useful.
     "use_new_terminal": false,
-    "allow_concurrent_runs": false,
-    "hide": "on_success"
+    "allow_concurrent_runs": false
+  },
+  {
+    "label": "Preview Markdown (QLMarkdown window)",
+    // Same renderer, but as an ordinary app window instead of a QuickLook
+    // panel: it survives clicking back into Zed, so it works side by side.
+    // Re-run the task to pick up changes.
+    "command": "open",
+    "args": ["-a", "QLMarkdown", "$ZED_FILE"],
+    "save": "current",
+    // `open` hands off to the app and exits straight away, so this task never
+    // has a terminal worth keeping.
+    "reveal": "never",
+    "hide": "always",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true
   }
 ]
