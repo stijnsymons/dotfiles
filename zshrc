@@ -121,10 +121,10 @@ alias upgrade='~/dotfiles/upgrade-all.sh'
 alias g='git add . && git commit && git push'
 alias gs='git status -sb'
 alias gd='git diff'
-
-# workmux
-alias wm='workmux'
+alias gu='gitup'
+# nvim
 alias v='nvim'
+alias vim='nvim'
 
 #-------------------------------------------------------------------------------
 # Fuzzy finder (https://github.com/junegunn/fzf)
@@ -193,6 +193,29 @@ export CONFLUENCE_EMAIL="stijn@novemberfive.co"
 export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write permissions
 
 #-------------------------------------------------------------------------------
+# Mermaid CLI
+#-------------------------------------------------------------------------------
+# mermaid-cli bundles a puppeteer-core pinned to one exact chrome-headless-shell
+# build (11.16.0 wants 150.0.7871.24). Homebrew never installs it, so mmdc dies
+# with "Could not find chrome-headless-shell" on a machine that has three
+# Chromiums. Point it at whatever headless shell is actually cached rather than
+# chasing the pin - it survives the next mermaid-cli bump.
+#
+# Deliberately NOT full Google Chrome.app: that works when spawned from a shell
+# but gets killed by a signal when nvim spawns it (puppeteer reports
+# "Code: null" at ChildProcess.onClose, empty stderr). The headless shell skips
+# Chrome's LaunchServices/GUI startup path. Keep it in sync with
+# config/nvim/lua/plugins/markdown.lua, which falls back to the same lookup
+# for a GUI-started nvim, where this file never runs.
+_chs=("${HOME}"/.cache/puppeteer/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell(N))
+if (( $#_chs )); then
+  export PUPPETEER_EXECUTABLE_PATH="${_chs[-1]}"
+elif [[ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]]; then
+  export PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+fi
+unset _chs
+
+#-------------------------------------------------------------------------------
 # Syntax highlighting (must be last)
 #-------------------------------------------------------------------------------
 [[ -r $BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && source $BREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
@@ -210,8 +233,6 @@ export CONFLUENCE_READ_ONLY=true # failsafe, token allows for page level write p
 #-------------------------------------------------------------------------------
 # aikido stuff
 #-------------------------------------------------------------------------------
-[[ $N5_WORK_LAPTOP == 1 ]] && {
-  
 # aikido-endpoint-ruby-cert-config-start
 # Allow Ruby Bundler to trust the SafeChain MITM CA while preserving public roots.
 export BUNDLE_SSL_CA_CERT="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-ruby-combined-ca.pem"
@@ -235,7 +256,6 @@ export REQUESTS_CA_BUNDLE="/Library/Application Support/AikidoSecurity/EndpointP
 export POETRY_CERTIFICATES_PYPI_CERT="/Library/Application Support/AikidoSecurity/EndpointProtection/run/endpoint-protection-pip-combined-ca.pem"
 export UV_SYSTEM_CERTS=true
 # aikido-endpoint-pip-cert-config-end
-
 # NOTE for whoever hits this next: Aikido writes a cert block above for Ruby,
 # curl/OpenSSL, Node and Python - but NOT for Go, and Go needs one.
 #
@@ -251,4 +271,3 @@ export UV_SYSTEM_CERTS=true
 # definition do not contain a private interception root, so it fails identically.
 # The real fix is the Aikido root being trusted in the System keychain, which is
 # an MDM/IT matter rather than a dotfiles one.
-}

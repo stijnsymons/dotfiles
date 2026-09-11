@@ -25,9 +25,14 @@ brew "glow"
 brew "gnu-sed"
 brew "go"
 brew "herdr"
+# snacks.image renders images and ```mermaid fences inline in nvim: mmdc
+# converts the diagrams, ImageMagick converts everything that is not
+# already a PNG. See config/nvim/lua/plugins/markdown.lua.
+brew "imagemagick"
 brew "jq"
 brew "lazygit"
 brew "lychee"
+brew "mermaid-cli"
 brew "node"
 brew "pandoc"
 brew "perl"
@@ -73,6 +78,11 @@ cask "google-chrome"
 cask "google-drive"
 cask "iina"
 cask "imageoptim"
+# Not the terminal - Ghostty stays. Kept for the `icat` kitten on the CLI.
+# No longer load-bearing for nvim: snacks.image encodes the Kitty graphics
+# protocol itself, unlike mermaid.nvim, which shelled out to `kitty +kitten
+# icat` and made this a hard dependency.
+cask "kitty"
 cask "obsidian"
 cask "provisionql"
 cask "qlmarkdown"
