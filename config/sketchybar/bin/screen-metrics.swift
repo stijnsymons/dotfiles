@@ -3,9 +3,11 @@
 //
 //   <safeAreaTop> <notchLeft> <notchRight> <screenWidth>
 //
-// safeAreaTop is the reserved top inset (38pt on a notched MacBook, 24pt on a
-// Mac without one). The bar height must equal it or a strip of desktop shows
-// through below the bar.
+// safeAreaTop is the reserved top inset - the menu bar's height as macOS
+// reports it. Measured on this Mac: 32 on the notched built-in, 30 on an
+// external. These are NOT stable across macOS releases (they were 38/24 when
+// this was written), which is the whole reason it is queried and not typed in.
+// The bar height must equal it or a strip of desktop shows through below it.
 //
 // notchLeft/notchRight bound the region where items are hidden by the notch.
 // Both are 0 when the display has no notch.

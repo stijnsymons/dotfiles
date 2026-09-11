@@ -7,7 +7,10 @@ source "$CONFIG_DIR/colors.sh"
 
 ##### Display metrics #####
 # Queried instead of hardcoded so the bar fits any Mac. BAR_HEIGHT is the
-# reserved top inset (38pt notched, 24pt not); NOTCH_L/NOTCH_R bound the region
+# reserved top inset - i.e. the MENU BAR's height, whatever macOS says it is
+# today. Measured on this Mac: 30 on the DELL, 32 on the notched built-in. Do
+# not re-hardcode these; earlier comments here said 38/24 and both have since
+# drifted. NOTCH_L/NOTCH_R bound the region
 # where items are invisible behind the notch (0 0 when there is no notch).
 # Compile bin/*.swift if missing or stale (no-op once built).
 "$CONFIG_DIR/bin/build.sh"
@@ -43,9 +46,9 @@ read -r BAR_HEIGHT NOTCH_L NOTCH_R SCREEN_W <<<"$("$CONFIG_DIR/bin/screen-metric
 # the item width, and use the difference. check.sh asserts no clipping.
 FONT_ICON="Hack Nerd Font"
 FONT_TEXT="FiraMono Nerd Font"
-SZ_ICON=15.0          # default icon glyphs
-SZ_LABEL=12.0         # default labels
-W_PCT=35              # widest "100%"  at SZ_LABEL
+SZ_ICON=15.0  # default icon glyphs
+SZ_LABEL=12.0 # default labels
+W_PCT=35      # widest "100%"  at SZ_LABEL
 # SZ_NET, W_SYS, W_NET, SYS_ROW and NET_ROW lived here and are gone with the
 # items they measured. They described the two stacked two-row columns - cpu over
 # mem, net_up over net_down - which used a negative padding_right to pull the
@@ -56,28 +59,38 @@ W_PCT=35              # widest "100%"  at SZ_LABEL
 # sizes them to content and ellipsises against the notch every tick. A fixed
 # width there cannot grow into free space, and an undefined one silently
 # renders as a bare icon.
-W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
-                      # 154 -> 200 (+30%). 35 chars x 5.70pt at FiraMono/SZ_LABEL.
-                      # check.sh asserts the cluster still clears the notch.
+W_MEDIA=200 # now-playing window: fixed, truncated, not scrolling.
+# 154 -> 200 (+30%). 35 chars x 5.70pt at FiraMono/SZ_LABEL.
+# check.sh asserts the cluster still clears the notch.
 
 ##### Bar #####
 # Solid full-width bar flush to the top edge. No y_offset/margin = no floating.
 #
-# topmost is OFF. macOS only reserves a top inset on a screen that shows the
+# topmost is ON. macOS only reserves a top inset on a screen that shows the
 # menu bar; with "Displays have separate Spaces" off (com.apple.spaces
 # spans-displays = 1) that is the built-in one only - and there it is the NOTCH
 # reserving it, not the menu bar, which auto-hides. So an external screen
-# reserves nothing at all.
+# reserves nothing at all, and with topmost=off a maximised window there covers
+# the bar entirely.
 #
-# topmost=on was tried for that (it draws the bar above windows, so it survives
-# a maximised window on the external screen) and reverted: it also draws above
-# the auto-revealed menu bar, making the real menu unreachable, and windows
-# still extend UNDER the bar rather than being kept clear of it - so the top
-# ~32pt of a maximised window sits hidden behind it. Both on the external
-# screen only; the notch keeps the built-in honest.
+# topmost=on was tried for that once before and reverted for two reasons, and
+# BOTH still apply - the omniwm outer gap below only softens the first one.
 #
-# With topmost=off the menu bar is reachable and nothing is buried, at the cost
-# of a maximised window on the external screen covering the bar entirely.
+# One: windows that extend UNDER the bar have their top strip buried, because
+# the bar now wins the z-order instead of losing it. The gap (top = 47) fixes
+# this for windows omniwm TILES - measured, they land at y=59 (47 outer + 12
+# inner) and clear the bar completely. It does NOT fix anything that sets the
+# raw screen frame itself and so escapes omniwm's geometry: Raycast's Maximize
+# does exactly that, snapping to 0,0 2560x1440 on the DELL - past both the
+# 30pt macOS reserves in visibleFrame and omniwm's 47. Its top 30pt is then
+# behind the bar. Use omniwm's own toggleFullscreen (Option+F, and
+# fullscreenUsesOuterGaps=true) instead, which honours the gap.
+#
+# Two: topmost=on also draws above the auto-revealed menu bar, so on the
+# external screen the real menu sits behind the bar when it slides down.
+#
+# topmost=off is the one-word revert. It costs the reverse: every maximised
+# window covers the bar entirely rather than the bar covering part of it.
 #
 # topmost=window is documented as a middle setting ("on top of all windows"
 # rather than of everything) which would have kept the bar over fullscreen
@@ -92,11 +105,13 @@ W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
 # space for a third-party bar, so the window manager has to. omniwm does it via
 #
 #   [gaps.outer]
-#   top = 38.0        # ~/.config/omniwm/settings.toml
+#   top = 47.0        # ~/.config/omniwm/settings.toml
 #
 # which is the one setting standing between this bar and being invisible behind
-# every tiled window on an external display. Measured after setting it: tiled
-# windows on the DELL end at y+h = 1654 of 1692, i.e. exactly 38pt clear.
+# every tiled window on an external display. Measured when it was 38: tiled
+# windows on the DELL ended at y+h = 1654 of 1692, i.e. exactly 38pt clear. It
+# has since been raised to 47, so the clearance is now larger than the bar
+# rather than flush to it; check.sh asserts >=, not ==, so that passes.
 #
 # Why it matters on the external and not the built-in: macOS reserves a top
 # inset only where it draws the menu bar, and on the built-in it is the NOTCH
@@ -105,7 +120,7 @@ W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
 # windows tile from y=0 and swallow the bar whole.
 #
 # It is GLOBAL rather than per-monitor, which costs ~32pt of the built-in when
-# undocked: the notch already reserves 32 there, and this adds 38 on top. The
+# undocked: the notch already reserves 32 there, and this adds 47 on top. The
 # per-monitor form is `monitorGapOverrides`, and four plausible TOML shapes for
 # it (monitorName / displayName / name keys, outerGapTop / top values) were all
 # parsed without complaint and all silently ignored, so the schema is not
@@ -123,20 +138,20 @@ W_MEDIA=200           # now-playing window: fixed, truncated, not scrolling.
 # Undock and primary reverts to the built-in, so the bar comes back on its own.
 # No display index to maintain: "main" tracks whatever macOS considers primary.
 sketchybar --bar height="$BAR_HEIGHT" \
-                 display=main \
-                 position=top \
-                 y_offset=0 \
-                 margin=0 \
-                 corner_radius=0 \
-                 border_width=0 \
-                 color="$BAR_COLOR" \
-                 blur_radius=0 \
-                 shadow=off \
-                 sticky=on \
-                 show_in_fullscreen=on \
-                 topmost=off \
-                 padding_left=8 \
-                 padding_right=8
+  display=main \
+  position=top \
+  y_offset=0 \
+  margin=0 \
+  corner_radius=0 \
+  border_width=0 \
+  color="$BAR_COLOR" \
+  blur_radius=0 \
+  shadow=off \
+  sticky=on \
+  show_in_fullscreen=on \
+  topmost=on \
+  padding_left=8 \
+  padding_right=8
 
 ##### Item defaults #####
 default=(
@@ -208,16 +223,16 @@ card_rows_for() { # card_rows_for <item>
   max="$(card_rows_max "$1")"
   while [ "$i" -le "$max" ]; do
     args+=(--add item "$1.pop.$i" "popup.$1"
-           --set "$1.pop.$i" drawing=off
-                             label.align=left
-                             label.font="$FONT_TEXT:Regular:12.0"
-                             icon.padding_left=12
-                             icon.padding_right=10
-                             label.padding_left=0
-                             label.padding_right=14
-                             background.drawing=off
-                             click_script="$PLUGIN_DIR/card.sh $1 close")
-    i=$(( i + 1 ))
+      --set "$1.pop.$i" drawing=off
+      label.align=left
+      label.font="$FONT_TEXT:Regular:12.0"
+      icon.padding_left=12
+      icon.padding_right=10
+      label.padding_left=0
+      label.padding_right=14
+      background.drawing=off
+      click_script="$PLUGIN_DIR/card.sh $1 close")
+    i=$((i + 1))
   done
   sketchybar "${args[@]}"
 }
@@ -246,19 +261,19 @@ card_rows_for() { # card_rows_for <item>
 spaces_args=()
 for sid in $SPACE_IDS; do
   spaces_args+=(--add item "space.$sid" left
-                --set "space.$sid" icon="$sid"
-                                   icon.font="$FONT_TEXT:Bold:$SZ_LABEL"
-                                   icon.color="$FG_DIM"
-                                   icon.padding_left=6
-                                   icon.padding_right=6
-                                   label.drawing=off
-                                   padding_left=1
-                                   padding_right=1
-                                   background.color="$SEPARATOR"
-                                   background.corner_radius=4
-                                   background.height=20
-                                   background.drawing=off
-                                   click_script="$PLUGIN_DIR/workspaces.sh focus $sid")
+    --set "space.$sid" icon="$sid"
+    icon.font="$FONT_TEXT:Bold:$SZ_LABEL"
+    icon.color="$FG_DIM"
+    icon.padding_left=6
+    icon.padding_right=6
+    label.drawing=off
+    padding_left=1
+    padding_right=1
+    background.color="$SEPARATOR"
+    background.corner_radius=4
+    background.height=20
+    background.drawing=off
+    click_script="$PLUGIN_DIR/workspaces.sh focus $sid")
 done
 sketchybar "${spaces_args[@]}"
 
@@ -276,14 +291,14 @@ sketchybar --add event wm_workspace_change
 # front_app_switched and system_woke are the cheap catch-ups for anything that
 # moved a window without either event landing.
 sketchybar --add item space_watch left \
-           --set space_watch drawing=off \
-                             icon.drawing=off \
-                             label.drawing=off \
-                             script="$PLUGIN_DIR/workspaces.sh" \
-           --subscribe space_watch wm_workspace_change \
-                                   space_windows_change \
-                                   front_app_switched \
-                                   system_woke
+  --set space_watch drawing=off \
+  icon.drawing=off \
+  label.drawing=off \
+  script="$PLUGIN_DIR/workspaces.sh" \
+  --subscribe space_watch wm_workspace_change \
+  space_windows_change \
+  front_app_switched \
+  system_woke
 
 # Rule between the workspace cluster and the focused app. workspaces.sh
 # hides it alongside the pips when the window manager is not up, so a hidden
@@ -302,12 +317,12 @@ sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
 # but never the colour, which is what lets a red survive until the next good
 # click instead of being wiped by the next app switch.
 sketchybar --add item front_app left \
-           --set front_app icon.color="$PINK" \
-                           label.max_chars=25 \
-                           label.font="$FONT_TEXT:Regular:13.0" \
-                           script="$PLUGIN_DIR/front_app.sh" \
-                           click_script="$PLUGIN_DIR/app_menu.sh" \
-           --subscribe front_app front_app_switched
+  --set front_app icon.color="$PINK" \
+  label.max_chars=25 \
+  label.font="$FONT_TEXT:Regular:13.0" \
+  script="$PLUGIN_DIR/front_app.sh" \
+  click_script="$PLUGIN_DIR/app_menu.sh" \
+  --subscribe front_app front_app_switched
 
 # herdr_flock has to be declared here, ABOVE its subscribers: meeting and
 # productive both subscribe to it, and a custom event must exist before anything
@@ -330,15 +345,15 @@ sketchybar --add item sep.now left --set sep.now "${separator[@]}"
 # second API round-trip. system_woke refreshes on lid-open rather than leaving
 # up to a minute of stale "N min left" on screen.
 sketchybar --add item meeting left \
-           --set meeting drawing=off \
-                         icon.color="$GREEN" \
-                         label.color="$FG" \
-                         label.font="$FONT_TEXT:Regular:13.0" \
-                         update_freq=60 \
-                         click_script="$PLUGIN_DIR/card.sh meeting toggle" \
-                         script="$PLUGIN_DIR/meeting.sh" \
-           --set meeting "${card_popup[@]}" \
-           --subscribe meeting system_woke herdr_flock mouse.exited.global
+  --set meeting drawing=off \
+  icon.color="$GREEN" \
+  label.color="$FG" \
+  label.font="$FONT_TEXT:Regular:13.0" \
+  update_freq=60 \
+  click_script="$PLUGIN_DIR/card.sh meeting toggle" \
+  script="$PLUGIN_DIR/meeting.sh" \
+  --set meeting "${card_popup[@]}" \
+  --subscribe meeting system_woke herdr_flock mouse.exited.global
 
 # Divider between the two "right now" items. meeting.sh hides this alongside
 # itself on the failed-fetch path, so a hidden meeting never leaves a rule
@@ -349,15 +364,15 @@ sketchybar --add item sep.timing left --set sep.timing "${separator[@]}"
 # point of the item, so it must never be mistaken for a quiet success state.
 # Also network-bound: update_freq=60, cached, click always opens the timesheet.
 sketchybar --add item productive left \
-           --set productive update_freq=60 \
-                            label.color="$FG" \
-                            label.font="$FONT_TEXT:Regular:13.0" \
-                            script="$PLUGIN_DIR/productive.sh" \
-                            click_script="$PLUGIN_DIR/card.sh productive toggle" \
-           --subscribe productive system_woke herdr_flock
+  --set productive update_freq=60 \
+  label.color="$FG" \
+  label.font="$FONT_TEXT:Regular:13.0" \
+  script="$PLUGIN_DIR/productive.sh" \
+  click_script="$PLUGIN_DIR/card.sh productive toggle" \
+  --subscribe productive system_woke herdr_flock
 
 sketchybar --set productive "${card_popup[@]}" \
-           --subscribe productive mouse.exited.global
+  --subscribe productive mouse.exited.global
 
 ##### Right side, added right-to-left #####
 
@@ -369,23 +384,30 @@ sketchybar --set productive "${card_popup[@]}" \
 # carries the ISO week (the one date fact macOS never shows), this week's
 # hours, and rows that go to the places the click was reaching for.
 sketchybar --add item clock right \
-           --set clock icon=󰥔 \
-                       icon.color="$VIOLET" \
-                       padding_right=10 \
-                       update_freq=15 \
-                       click_script="$PLUGIN_DIR/card.sh clock toggle" \
-                       script="$PLUGIN_DIR/clock.sh"
+  --set clock icon=󰥔 \
+  icon.color="$VIOLET" \
+  padding_right=10 \
+  update_freq=15 \
+  click_script="$PLUGIN_DIR/card.sh clock toggle" \
+  script="$PLUGIN_DIR/clock.sh"
 
-# popup.align=right overrides card_popup's left, and only here: clock is the
-# RIGHTMOST item, so a left-aligned popup grows off the screen. Measured at
-# 1728pt wide - the widest row ran to x=1800, losing 72pt of "13h / 34h logged
-# this week" past the edge. Aligning right anchors the popup's right edge to
-# the item's and it grows inwards (1473..1709, clear). media, wifi and herdr do
-# not need it - they sit far enough left that even their widest rows land inside
-# the screen, and setting it there opens the card beside the item rather than
-# under it.
+# popup.align=right overrides card_popup's left: clock is the RIGHTMOST item, so
+# a left-aligned popup grows off the screen. Measured at 1728pt wide - the widest
+# row ran to x=1800, losing 72pt of "13h / 34h logged this week" past the edge.
+# Aligning right anchors the popup's right edge to the item's and it grows
+# inwards (1473..1709, clear).
+#
+# "Far enough left" was the wrong test and this comment used to clear wifi and
+# herdr with it. The items to an item's RIGHT are what set its budget, and those
+# are right-anchored, so the room a popup has is fixed by the item's neighbours
+# and does not grow with the display. wifi sits at x=1757 with 299pt to the edge
+# on a 2056pt screen - and had the same 299pt on the 1728pt screen this was first
+# measured on - against a 366pt card. It was clipped by 67pt the whole time, in
+# the same way and for the same reason as the clock. See the wifi --set below.
+# Measure with `sketchybar --query <item>.pop.1` for the width; the popup's own
+# rect is not exposed.
 sketchybar --set clock "${card_popup[@]}" popup.align=right \
-           --subscribe clock mouse.exited.global
+  --subscribe clock mouse.exited.global
 
 sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
 
@@ -397,13 +419,13 @@ sketchybar --add item sep.clock right --set sep.clock "${separator[@]}"
 # alone answers the less useful half of the question. The privacy pane the
 # click used to open is the card's last row, so nothing was lost.
 sketchybar --add item mic right \
-           --set mic drawing=off \
-                     click_script="$PLUGIN_DIR/card.sh mic toggle"
+  --set mic drawing=off \
+  click_script="$PLUGIN_DIR/card.sh mic toggle"
 
 # align=right for the same reason as the clock: mic sits in the right cluster,
 # and app names are long enough that a left-aligned card can leave the screen.
 sketchybar --set mic "${card_popup[@]}" popup.align=right \
-           --subscribe mic mouse.exited.global
+  --subscribe mic mouse.exited.global
 
 sketchybar --add item sep.status right --set sep.status "${separator[@]}"
 
@@ -416,12 +438,12 @@ sketchybar --add item sep.status right --set sep.status "${separator[@]}"
 # group below follows the same rule, which is why they look backwards in the
 # file and correct on screen.
 sketchybar --add item battery right \
-           --set battery label.width="$W_PCT" \
-                         label.align=left \
-                         update_freq=120 \
-                         click_script="open 'x-apple.systempreferences:com.apple.Battery-Settings.extension'" \
-                         script="$PLUGIN_DIR/battery.sh" \
-           --subscribe battery system_woke power_source_change
+  --set battery label.width="$W_PCT" \
+  label.align=left \
+  update_freq=120 \
+  click_script="open 'x-apple.systempreferences:com.apple.Battery-Settings.extension'" \
+  script="$PLUGIN_DIR/battery.sh" \
+  --subscribe battery system_woke power_source_change
 
 # Keep-awake toggle. Green mug = our own `caffeinate -i` is holding the machine
 # awake, dim = off. update_freq re-validates the PID, so a caffeinate killed
@@ -434,10 +456,10 @@ sketchybar --add item battery right \
 # $NAME, which is what lets the same script serve a direct click here and still
 # work if it is ever put back behind a card row.
 sketchybar --add item caffeine right \
-           --set caffeine update_freq=30 \
-                          label.drawing=off \
-                          script="$PLUGIN_DIR/caffeine.sh" \
-                          click_script="$PLUGIN_DIR/caffeine_click.sh"
+  --set caffeine update_freq=30 \
+  label.drawing=off \
+  script="$PLUGIN_DIR/caffeine.sh" \
+  click_script="$PLUGIN_DIR/caffeine_click.sh"
 
 # wifi_change is what actually moves this item, and it fires the moment the
 # association changes. The poll is only a backstop for a missed event, so it
@@ -452,20 +474,27 @@ sketchybar --add item caffeine right \
 # and publishes the rates into helper-state.json; cards/wifi.sh reads them when
 # the card opens.
 sketchybar --add item wifi right \
-           --set wifi update_freq=60 \
-                      label.drawing=off \
-                      click_script="$PLUGIN_DIR/card.sh wifi toggle" \
-                      script="$PLUGIN_DIR/wifi.sh" \
-           --subscribe wifi wifi_change
+  --set wifi update_freq=60 \
+  label.drawing=off \
+  click_script="$PLUGIN_DIR/card.sh wifi toggle" \
+  script="$PLUGIN_DIR/wifi.sh" \
+  --subscribe wifi wifi_change
 
-sketchybar --set wifi "${card_popup[@]}" \
-           --subscribe wifi mouse.exited.global
+# popup.align=right for the same reason as the clock, measured the same way: the
+# card is 366pt wide (wifi.pop.1 bounding_rect) and the item sits at x=1757, so a
+# left-aligned popup ran to 2123 on a 2056pt screen and lost the last 67pt - the
+# right-hand VALUE column, which is the half of every row worth reading. Anchored
+# right it spans 1417..1783 and clears. The cost is the documented one: the card
+# opens beside the item rather than under it, which is the correct trade when the
+# alternative is losing the IP addresses off the edge.
+sketchybar --set wifi "${card_popup[@]}" popup.align=right \
+  --subscribe wifi mouse.exited.global
 
 sketchybar --add item volume right \
-           --set volume icon.color="$YELLOW" \
-                        label.width="$W_PCT" \
-                        label.align=left \
-           --subscribe volume volume_change mouse.clicked mouse.scrolled
+  --set volume icon.color="$YELLOW" \
+  label.width="$W_PCT" \
+  label.align=left \
+  --subscribe volume volume_change mouse.clicked mouse.scrolled
 
 # Divides the work group (herdr / claude / github) from the machine group. Named
 # sep.net from when it flanked the throughput items, which are gone; the name is
@@ -501,18 +530,18 @@ sketchybar --add item sep.net right --set sep.net "${separator[@]}"
 # switching to curl - that was tried and deliberately reverted; see the
 # transport note at the top of plugins/github.sh.
 sketchybar --add item github right \
-           --set github icon="$(printf '\357\202\233')" \
-                        icon.color="$FG_DIM" \
-                        icon.font="$FONT_ICON:Regular:14.0" \
-                        label.drawing=off \
-                        label.font="$FONT_TEXT:Bold:$SZ_LABEL" \
-                        label.padding_right=4 \
-                        update_freq=600 \
-                        script="$PLUGIN_DIR/github.sh" \
-                        click_script="$PLUGIN_DIR/card.sh github toggle"
+  --set github icon="$(printf '\357\202\233')" \
+  icon.color="$FG_DIM" \
+  icon.font="$FONT_ICON:Regular:14.0" \
+  label.drawing=off \
+  label.font="$FONT_TEXT:Bold:$SZ_LABEL" \
+  label.padding_right=4 \
+  update_freq=600 \
+  script="$PLUGIN_DIR/github.sh" \
+  click_script="$PLUGIN_DIR/card.sh github toggle"
 
 sketchybar --set github "${card_popup[@]}" popup.align=right \
-           --subscribe github mouse.exited.global
+  --subscribe github mouse.exited.global
 
 # Herdr flock: the agents the herdr session is running, one coloured digit per
 # state (plugins/herdr.sh renders, cards/herdr.sh details, click toggles the
@@ -546,35 +575,35 @@ herdr_args=()
 # it looking for cards/herdr.claude.sh. The name is the card's identity, not a
 # statement about which cluster the item is drawn next to.
 herdr_args+=(--add item claude right
-             --set claude icon="$(printf '\363\260\232\251')"
-                          icon.color="$VIOLET"
-                          icon.font="$FONT_ICON:Regular:12.0"
-                          icon.padding_left=6
-                          icon.padding_right=3
-                          label.font="$FONT_TEXT:Bold:$SZ_LABEL"
-                          label.padding_right=4
-                          update_freq=300
-                          script="$PLUGIN_DIR/claude_usage.sh"
-                          click_script="$PLUGIN_DIR/card.sh claude toggle")
+  --set claude icon="$(printf '\363\260\232\251')"
+  icon.color="$VIOLET"
+  icon.font="$FONT_ICON:Regular:12.0"
+  icon.padding_left=6
+  icon.padding_right=3
+  label.font="$FONT_TEXT:Bold:$SZ_LABEL"
+  label.padding_right=4
+  update_freq=300
+  script="$PLUGIN_DIR/claude_usage.sh"
+  click_script="$PLUGIN_DIR/card.sh claude toggle")
 for st in unknown idle 'done' working blocked; do
   herdr_args+=(--add item "herdr.$st" right
-               --set "herdr.$st" drawing=off
-                                 icon.drawing=off
-                                 label.font="$FONT_TEXT:Bold:$SZ_LABEL"
-                                 label.padding_left=2
-                                 label.padding_right=3
-                                 click_script="$PLUGIN_DIR/card.sh herdr toggle")
+    --set "herdr.$st" drawing=off
+    icon.drawing=off
+    label.font="$FONT_TEXT:Bold:$SZ_LABEL"
+    label.padding_left=2
+    label.padding_right=3
+    click_script="$PLUGIN_DIR/card.sh herdr toggle")
 done
 herdr_args+=(--add item herdr right
-             --set herdr drawing=off
-                         icon="$(printf '\363\260\263\206')"
-                         icon.color="$FG_DIM"
-                         icon.padding_right=2
-                         label.drawing=off
-                         script="$PLUGIN_DIR/herdr.sh"
-                         click_script="$PLUGIN_DIR/card.sh herdr toggle"
-             --add item sep.herdr right
-             --set sep.herdr "${separator[@]}" drawing=off)
+  --set herdr drawing=off
+  icon="$(printf '\363\260\263\206')"
+  icon.color="$FG_DIM"
+  icon.padding_right=2
+  label.drawing=off
+  script="$PLUGIN_DIR/herdr.sh"
+  click_script="$PLUGIN_DIR/card.sh herdr toggle"
+  --add item sep.herdr right
+  --set sep.herdr "${separator[@]}" drawing=off)
 # popup.align is left unset here - not "left", UNSET - so sketchybar places the
 # card itself rather than anchoring it to an edge of the item.
 #
@@ -597,7 +626,7 @@ sketchybar "${herdr_args[@]}" --set herdr "${card_popup_noalign[@]}"
 # of this file creates one set of rows for every item in it. Calling it here as
 # well would build all ten rows twice.
 sketchybar --set claude "${card_popup[@]}" popup.align=right \
-           --subscribe claude mouse.exited.global
+  --subscribe claude mouse.exited.global
 
 # The visibility memory must not survive a reload: initial paint races the
 # cluster into place, and a stale "on" would swallow the poke that repairs it.
@@ -610,29 +639,29 @@ sketchybar --subscribe herdr system_woke mouse.exited.global
 # elapsed-state drift: 15, not 5. nowplaying-cli costs ~115ms a call, which at
 # 5s was ~2.3% of a core around the clock for a label that mostly did not move.
 sketchybar --add item media right \
-           --set media icon.color="$GREEN" \
-                       label.color="$FG" \
-                       label.max_chars=35 \
-                       label.width="$W_MEDIA" \
-                       label.align=left \
-                       scroll_texts=off \
-                       update_freq=15 \
-                       script="$PLUGIN_DIR/media.sh" \
-                       click_script="$PLUGIN_DIR/card.sh media toggle" \
-           --subscribe media media_change
+  --set media icon.color="$GREEN" \
+  label.color="$FG" \
+  label.max_chars=35 \
+  label.width="$W_MEDIA" \
+  label.align=left \
+  scroll_texts=off \
+  update_freq=15 \
+  script="$PLUGIN_DIR/media.sh" \
+  click_script="$PLUGIN_DIR/card.sh media toggle" \
+  --subscribe media media_change
 
 sketchybar --set media "${card_popup[@]}" \
-           --subscribe media mouse.exited.global
+  --subscribe media mouse.exited.global
 
 ##### Display watcher #####
 # Zero-width item whose only job is to re-fit the bar height when the
 # resolution changes; the startup probe above runs only at config load.
 sketchybar --add item display_watch right \
-           --set display_watch drawing=off \
-                               icon.drawing=off \
-                               label.drawing=off \
-                               script="$PLUGIN_DIR/display.sh" \
-           --subscribe display_watch display_change
+  --set display_watch drawing=off \
+  icon.drawing=off \
+  label.drawing=off \
+  script="$PLUGIN_DIR/display.sh" \
+  --subscribe display_watch display_change
 
 ##### Outside-click watcher #####
 # Zero-width item that stands in for the global click event sketchybar does not
@@ -649,11 +678,11 @@ sketchybar --add item display_watch right \
 #
 # shellcheck disable=SC2086  # deliberate split: one --subscribe, every event
 sketchybar --add item card_watch right \
-           --set card_watch drawing=off \
-                            icon.drawing=off \
-                            label.drawing=off \
-                            script="$PLUGIN_DIR/card.sh away" \
-           --subscribe card_watch $CARD_AWAY_EVENTS
+  --set card_watch drawing=off \
+  icon.drawing=off \
+  label.drawing=off \
+  script="$PLUGIN_DIR/card.sh away" \
+  --subscribe card_watch $CARD_AWAY_EVENTS
 
 # Card rows are added last: every parent item must exist first.
 for c in $CARD_ITEMS; do card_rows_for "$c"; done
@@ -697,9 +726,9 @@ else
   # reads the helper's state file. Without the helper that row simply reports
   # nothing, which is the honest outcome - there is no shell sampler left on the
   # bar to restore a timer to.
-  sketchybar --set mic    update_freq=3 script="$PLUGIN_DIR/mic.sh" \
-             --set volume script="$PLUGIN_DIR/volume.sh" \
-             --set herdr  update_freq=5 script="$PLUGIN_DIR/herdr.sh"
+  sketchybar --set mic update_freq=3 script="$PLUGIN_DIR/mic.sh" \
+    --set volume script="$PLUGIN_DIR/volume.sh" \
+    --set herdr update_freq=5 script="$PLUGIN_DIR/herdr.sh"
 fi
 
 ##### omniwm event watcher #####
@@ -736,7 +765,7 @@ done
 unset _w
 if command -v omniwmctl >/dev/null 2>&1; then
   omniwmctl watch active-workspace,windows-changed --reconnect \
-            --exec sketchybar --trigger wm_workspace_change >/dev/null 2>&1 &
+    --exec sketchybar --trigger wm_workspace_change >/dev/null 2>&1 &
   disown
 else
   printf 'sketchybar: omniwmctl is not on PATH - the workspace pips will not repaint\n' >&2
