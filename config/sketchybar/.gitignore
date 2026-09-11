@@ -7,5 +7,16 @@ bin/*
 !bin/*.c
 !bin/*.h
 
+# Vendored app-menu helper. `bin/*` above would swallow the whole directory
+# and git never descends into an excluded one, so the dir is re-included and
+# then its contents re-excluded, leaving only the sources tracked. The built
+# SketchyBarAppleMenu.app stays out of the tree like every other artefact.
+!bin/app-menu/
+bin/app-menu/*
+!bin/app-menu/*.swift
+!bin/app-menu/Info.plist
+!bin/app-menu/LICENSE
+!bin/app-menu/ORIGIN.md
+
 # Local backups from the Kanagawa -> Tokyo Night switch
 *.bak

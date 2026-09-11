@@ -58,27 +58,80 @@ echo "app menu:"
 # click_script and only the latter opens the menu, so a config that drops the
 # click_script leaves an item that still paints correctly and silently does
 # nothing when clicked - which is precisely the bug that is easy to miss.
-sketchybar --query front_app 2>/dev/null | jq -e --arg h "$CONFIG_DIR/plugins/app_menu.sh" \
-  '.click_script | test($h)' >/dev/null \
-  && ok "front_app click opens the app menu" \
-  || bad "front_app has no click_script pointing at app_menu.sh"
-# --print, never the handler itself: a real invocation drops a modal NSMenu
-# over the rest of this suite, and omniwmctl BLOCKS on a second one while the
-# first is tracking. The seam names the command instead of running it.
-AM_CMD="$("$CONFIG_DIR/plugins/app_menu.sh" --print 2>/dev/null)"
-is "handler drives omniwm's open-menu-anywhere" "$AM_CMD" "omniwmctl command open-menu-anywhere"
-# Drift guard on the other side of that contract: the click is silent when
-# omniwm renames or drops the command, because the handler only prints its
-# complaint to a stderr nobody reads. `omniwmctl help` is local usage text, so
-# this holds whether or not omniwm is running - unlike the ipc probe further down.
-omniwmctl help 2>&1 | grep -qF -- "$AM_CMD" \
-  && ok "omniwm still exposes the command" \
-  || bad "omniwmctl no longer lists '$AM_CMD' - the app menu click is a no-op"
+# TWO bugs lived in this one assertion and it could never pass.
+#
+# .scripting.click_script, NOT .click_script: sketchybar reports every script
+# field under a "scripting" object, so the old path fed jq a null and test()
+# errored out - reporting a broken app menu on a bar whose app menu was fine.
+#
+# And the paths are compared RESOLVED, because the two sides spell the same file
+# differently. The running bar was started from ~/.config/sketchybar and reports
+# that prefix; CONFIG_DIR here defaults to the directory this script sits in, so
+# running check.sh from the dotfiles checkout compares
+# /Users/stijn/dotfiles/config/... against /Users/stijn/.config/... - one symlink
+# apart, same inode, textually unequal. cd+pwd -P rather than `readlink -f` to
+# keep this working under the same bare environments the rest of the suite runs
+# in; it resolves the directory symlink, which is the only one in play.
+_resolve() { ( cd "$(dirname "$1")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$1")" ); }
+AM_LIVE="$(sketchybar --query front_app 2>/dev/null | jq -r '.scripting.click_script // empty' | awk '{print $1}')"
+if [ -n "$AM_LIVE" ] && [ "$(_resolve "$AM_LIVE")" = "$(_resolve "$CONFIG_DIR/plugins/app_menu.sh")" ]; then
+  ok "front_app click opens the app menu"
+else
+  bad "front_app has no click_script pointing at app_menu.sh (got '${AM_LIVE:-none}')"
+fi
+# --print, never the handler itself: a real invocation drops a menu panel over
+# the rest of this suite and it grabs the mouse. The seam names the bundle it
+# would launch instead of launching it.
+#
+# This used to assert omniwm's `open-menu-anywhere`. The menu no longer goes
+# through omniwm - it is a vendored helper under bin/app-menu/, so what needs
+# guarding changed shape entirely. See plugins/app_menu.sh for why it moved.
+AM_APP="$("$CONFIG_DIR/plugins/app_menu.sh" --print 2>/dev/null)"
+if [ -d "$AM_APP" ]; then
+  ok "app menu bundle built"
+else
+  bad "app menu bundle missing (${AM_APP:-none}) - bin/build.sh has not produced it"
+fi
+# THE ASSERTION THAT ACTUALLY EARNS ITS PLACE. macOS keys the Accessibility
+# grant to the code signature, so a bundle rebuilt without the stable identifier
+# AND its matching designated requirement reads as a brand new untrusted app.
+# Every visible symptom stays green when that happens - the bundle exists, the
+# click_script is wired, `open` returns 0 - and no menu ever appears. Nothing
+# else in this suite would notice, which is exactly the class of bug the
+# reserved-inset check further down exists for.
+AM_ID="dev.sketchybar.apple-menu"
+if [ -d "$AM_APP" ]; then
+  if codesign -dv "$AM_APP" 2>&1 | grep -qF "Identifier=$AM_ID"; then
+    ok "app menu signed as $AM_ID"
+  else
+    bad "app menu identifier is not $AM_ID - macOS will treat it as a new app and drop its Accessibility grant"
+  fi
+  if codesign -d -r- "$AM_APP" 2>&1 | grep -qF "identifier \"$AM_ID\""; then
+    ok "app menu carries a stable designated requirement"
+  else
+    bad "app menu has no designated requirement pinning $AM_ID - its Accessibility grant will not survive a rebuild"
+  fi
+fi
+# The grant itself cannot be asserted from here: TCC.db is SIP-protected and
+# AXIsProcessTrusted answers for the CALLING process, which is this script, not
+# the helper. A menu that never opens with everything above green means the
+# grant is missing - System Settings > Privacy & Security > Accessibility.
 
 echo "layout vs notch:"
 read -r M_TOP M_NL M_NR _ <<<"$(swift "$CONFIG_DIR/bin/screen-metrics.swift" 2>/dev/null)"
 BAR_H="$(sketchybar --query bar 2>/dev/null | jq -r '.height')"
-is "bar height matches reserved top inset" "$BAR_H" "$M_TOP"
+# A reserved inset of 0 is a VALID reading, not a failure: safeAreaInsets.top is
+# 0 without a notch, and with the menu bar set to auto-hide macOS reserves
+# nothing at all, so an external primary reports a literal 0. sketchybarrc and
+# plugins/display.sh both answer that with a 38pt fallback, so this must expect
+# 38 there or it fails the moment the MacBook is docked and the DELL takes the
+# menu bar. What actually protects the bar from tiled windows in that state is
+# omniwm's outer-gap, asserted separately further down.
+if [ "${M_TOP:-0}" = "0" ]; then
+  is "bar height falls back to 38 where macOS reserves no inset" "$BAR_H" "38"
+else
+  is "bar height matches reserved top inset" "$BAR_H" "$M_TOP"
+fi
 if [ "${M_NR:-0}" = "0" ]; then
   ok "no notch on this display, skipping clearance"
 else
@@ -823,20 +876,34 @@ done
 
 source "$CONFIG_DIR/plugins/fit.sh"
 FLONG="$(printf 'x%.0s' $(seq 1 300))"
+# fit_label measures the run-up to the NOTCH, and returns its input untouched
+# when there is no notch to run up to - see the early return in plugins/fit.sh.
+# That is the deliberate behaviour, so on a notchless primary (an external
+# display holding the menu bar) every assertion below is asserting the opposite
+# of the contract. Branch rather than delete: docked and undocked are both real
+# states of this machine and each has to be checkable. Same shape as the notch
+# clearance skip above, which uses M_NR the same way.
+if [ "${M_NL:-0}" = "0" ]; then
+  FFIT="$(fit_label productive "$FLONG")"
+  is "fit_label passes text through where there is no notch" "${#FFIT}" "300"
+  ok "no notch on this display, skipping fit_label truncation checks"
+else
 FFIT="$(fit_label productive "$FLONG")"
 case "$FFIT" in
   *…) ok "fit_label ellipsises overlong text" ;;
   *)  bad "fit_label did not truncate (returned ${#FFIT} chars)" ;;
 esac
 [ "${#FFIT}" -lt 300 ] && ok "fit_label shortened 300 -> ${#FFIT} chars" || bad "fit_label returned full length"
-# Short text must pass through untouched, or every label gains a stray ellipsis.
-FSHORT="$(fit_label productive "ok")"
-is "fit_label leaves short text alone" "$FSHORT" "ok"
 # A hidden item has no x. It must still truncate (from cache or the conservative
 # default), or a newly-appearing meeting overruns the notch for a whole tick.
 FHIDDEN="$(fit_label definitely_not_an_item "$FLONG")"
 [ "${#FHIDDEN}" -lt 300 ] && ok "fit_label truncates without a laid-out item (${#FHIDDEN} chars)" \
                           || bad "fit_label passed 300 chars through for an unlaid-out item"
+fi
+# Short text must pass through untouched on ANY display, or every label gains a
+# stray ellipsis - so this one is outside the notch branch.
+FSHORT="$(fit_label productive "ok")"
+is "fit_label leaves short text alone" "$FSHORT" "ok"
 
 echo "herdr:"
 # Byte-level glyph check, like caffeine: a dropped plane-15 glyph

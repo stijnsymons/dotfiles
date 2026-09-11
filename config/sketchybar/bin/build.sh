@@ -62,6 +62,55 @@ if [ -e "$HELPER_SRC" ]; then
   fi
 fi
 
+# --- app-menu: the frontmost app's menu bar, rendered by the vendored helper
+# under bin/app-menu/. Built by hand rather than by the generic loop below, and
+# not because it is fussy - because the loop produces BARE BINARIES and this has
+# to be an .app bundle. macOS grants Accessibility to bundles, and this helper
+# cannot read another application's menu tree without that grant.
+#
+# The codesign line is the load-bearing one. An ad-hoc signature with a STABLE
+# --identifier and a matching designated requirement is what lets macOS
+# recognise a freshly rebuilt bundle as the same app it already trusts. Drop
+# either half and every rebuild silently reads as a new app with no grant: the
+# bar keeps painting, the click keeps returning 0, and no menu ever appears.
+APPMENU_DIR="$BIN_DIR/app-menu"
+APPMENU_SRC="$APPMENU_DIR/SketchyBarAppleMenu.swift"
+APPMENU_PLIST="$APPMENU_DIR/Info.plist"
+APPMENU_ID="dev.sketchybar.apple-menu"
+if [ -e "$APPMENU_SRC" ]; then
+  APPMENU_APP="$APPMENU_DIR/SketchyBarAppleMenu.app"
+  APPMENU_BIN="$APPMENU_APP/Contents/MacOS/SketchyBarAppleMenu"
+
+  stale=0
+  for dep in "$APPMENU_SRC" "$APPMENU_PLIST"; do
+    [ ! -x "$APPMENU_BIN" ] || [ "$dep" -nt "$APPMENU_BIN" ] && stale=1
+  done
+
+  if [ "$stale" = 1 ]; then
+    err="$LOG_DIR/build-app-menu.err"
+    # Same principle as build() above - assemble a complete bundle alongside and
+    # swap it in only once it has compiled AND signed, so a source that stops
+    # building leaves the last working menu in place instead of a broken shell
+    # of one. mv, not ditto, so the swap is a rename and never a half-copy.
+    new="$APPMENU_APP.new"
+    rm -rf "$new"
+    mkdir -p "$new/Contents/MacOS"
+    cp "$APPMENU_PLIST" "$new/Contents/Info.plist"
+    if swiftc -O -framework Cocoa -framework ApplicationServices \
+              -o "$new/Contents/MacOS/SketchyBarAppleMenu" "$APPMENU_SRC" 2>"$err" \
+       && codesign --force --sign - --identifier "$APPMENU_ID" \
+                   --requirements "=designated => identifier \"$APPMENU_ID\"" \
+                   "$new" 2>>"$err"; then
+      rm -rf "$APPMENU_APP"
+      mv "$new" "$APPMENU_APP"
+      rm -f "$err"
+    else
+      rm -rf "$new"
+      printf 'sketchybar: app-menu failed to build, see %s\n' "$err" >&2
+    fi
+  fi
+fi
+
 # --- Every other bin/*.swift is a standalone one-file helper.
 for src in "$BIN_DIR"/*.swift; do
   [ -e "$src" ] || continue

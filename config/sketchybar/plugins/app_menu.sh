@@ -8,96 +8,109 @@
 # sitting right next to it doing nothing on click. Clicking "Ghostty" to get
 # Ghostty's menus needs no glyph to explain it.
 #
-# This is omniwm's own `open-menu-anywhere`, the same thing Control+Option+M is
-# bound to in ~/.config/omniwm/settings.toml (id openMenuAnywhere). The bar and
-# the keyboard therefore reach ONE implementation; the alternative below would
-# have meant two menus for one job that could drift apart.
+# THIS WAS omniwm's `open-menu-anywhere` and is not any more. That version was
+# chosen because the bar and the keyboard (Control+Option+M, id
+# openMenuAnywhere) then reached ONE implementation that could not drift, and
+# because omniwm already holds the Accessibility grant this job needs, so it
+# added no new TCC surface. Both arguments still hold. They are simply worth
+# less than the assumption underneath them: that omniwm is RUNNING. It is not -
+# it was turned off as too intrusive - and a click routed through a stopped
+# window manager is a dead click that reports its failure only by turning an
+# icon red.
 #
-# aizigao/sketchybar_apple_memu_via_swift was evaluated as the alternative and
-# REJECTED, and it was not on capability - it does the same thing by the same
-# route (walk the frontmost app's AXMenuBar, render it, AXPress the row you
-# pick) and it compiles clean. What killed it is what it costs to own:
+# What runs now is aizigao/sketchybar_apple_memu_via_swift, vendored under
+# bin/app-menu/ (see ORIGIN.md). It is the alternative that was evaluated and
+# REJECTED first time round, and it was never rejected on capability - it does
+# the same job by the same route, walking the frontmost app's AXMenuBar and
+# AXPressing the row you pick. It was rejected on what it costs to own, and
+# taking it now means paying exactly those costs, knowingly:
+#
 #   - a SECOND Accessibility grant, for a second app that can read every
-#     running application's menu tree. omniwm already holds that grant and
-#     cannot tile a single window without it, so option B adds no new TCC
-#     surface at all and option A adds a duplicate of the most invasive one.
-#   - ~500 lines of vendored third-party Swift in this repo, plus a build.sh
-#     stanza the generic bin/*.swift loop cannot cover: it is an .app bundle,
-#     not a bare binary - Info.plist with LSUIElement, and an ad-hoc codesign
-#     carrying a stable designated requirement, which is the only reason its
-#     Accessibility grant survives a rebuild. Get that signing detail wrong and
-#     the symptom is a menu that silently stops opening after every recompile.
+#     running application's menu tree. This no longer duplicates omniwm's
+#     grant, since omniwm is off - it REPLACES it. Granted by hand once, in
+#     System Settings > Privacy & Security > Accessibility.
+#   - ~520 lines of vendored third-party Swift, plus the build.sh stanza the
+#     generic bin/*.swift loop cannot cover, because this is an .app bundle
+#     with an Info.plist and a signature whose identifier must stay stable.
 #   - a second long-lived background process, launched through `open -g`.
-# What is given up is theming: omniwm draws a native NSMenu, so this one does
-# NOT take POPUP_BG/SEPARATOR/FG from colors.sh the way the hover cards do. For
-# a menu that is arguably correct - it should look like the menu it is standing
-# in for - but it is a real difference from every other popup on this bar.
+#
+# What is BOUGHT, beyond independence from omniwm: theming. omniwm drew a
+# native NSMenu that ignored colors.sh; this helper takes the popup palette as
+# arguments, so the app menu finally matches every other popup on this bar.
+#
+# It also makes the old one-menu-at-a-time guard unnecessary. omniwmctl BLOCKED
+# when invoked a second time while a menu was tracking - it sat inside NSMenu's
+# nested modal run loop until the menu went away, and a leaning-on-the-item user
+# accumulated one stuck process per extra click. This helper is a single
+# reusable background app: a second launch is delivered to the running instance
+# as a reopen, which TOGGLES the panel shut. Clicking twice closes the menu,
+# which is what a click on an open menu should do anyway.
 set -u
 
-# Sourced for the launchd PATH repair, not for a colour: sketchybar is started
-# from a login-less context where /opt/homebrew/bin is not on PATH, so a bare
-# `omniwmctl` here resolves to nothing and the click does nothing, silently.
+# Defaulted so --print works when this is run by hand. sketchybar always exports
+# CONFIG_DIR, and check.sh sets it too, but a bare shell does not - and with
+# `set -u` the seam then dies on an unbound variable instead of printing.
+CONFIG_DIR="${CONFIG_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Sourced for the popup palette AND for the launchd PATH repair: sketchybar is
+# started from a login-less context where /opt/homebrew/bin is not on PATH.
 source "$CONFIG_DIR/colors.sh"
 
-# Test seam, same shape as meeting_click.sh's --print: name the command instead
-# of running it. check.sh must be able to assert this handler without a modal
-# NSMenu appearing over the suite and swallowing the rest of the run.
+APP="$CONFIG_DIR/bin/app-menu/SketchyBarAppleMenu.app"
+
+# Test seam, same shape as meeting_click.sh's --print: name the target instead
+# of launching it. check.sh must be able to assert this handler without a menu
+# panel appearing over the suite and swallowing the rest of the run. It prints
+# the BUNDLE PATH rather than a command line, because the bundle is what the
+# suite can then verify the identity of - see the codesign assertions there.
 if [ "${1:-}" = "--print" ]; then
-  printf 'omniwmctl command open-menu-anywhere\n'
+  printf '%s\n' "$APP"
   exit 0
 fi
 
-# One menu at a time, enforced here rather than left to omniwm.
-#
-# MEASURED, not assumed: `omniwmctl command open-menu-anywhere` normally returns
-# in well under a second having fired the menu off asynchronously - but invoked
-# a SECOND time while a menu is already tracking, it BLOCKS. It was left hung
-# past 120s in testing and had to be killed. omniwm itself stays healthy (ping
-# and query both answer through it), so this is the controller sitting inside
-# NSMenu's nested modal run loop and not servicing the request until the menu
-# goes away. sketchybar forks a fresh process per click, so without this guard a
-# leaning-on-the-item user accumulates one stuck omniwmctl per extra click.
-#
-# In practice a real double click rarely gets here - a tracking NSMenu grabs the
-# mouse, so the click that dismisses it is eaten by the menu and never reaches
-# sketchybar - but "rarely" is not "never" and the failure leaves debris.
-#
-# ps, not pgrep, for the reason bin/wmswitch.sh records at length: pgrep depends
-# on sysmond and has been seen failing outright on this machine, and it fails
-# OPEN - it would report no menu open and let the second one stack up. The
-# [o]mniwmctl bracket keeps this grep from matching its own pipeline.
-if ps -Ao args= | grep -q '[o]mniwmctl command open-menu-anywhere'; then
-  exit 0
-fi
-
-# --format json so the outcome is a field rather than a guess. Both failure
-# modes answer in the same envelope: a dead socket (omniwm down, or IPC still
-# switched off in its settings) comes back as ok:false / transport_failure with
-# exit 2, and a command omniwm no longer knows as ok:false / invalid_arguments
-# with exit 3. Only `ok: true` is success. stderr is folded into the capture so
-# "omniwmctl is not on PATH at all" lands in the same branch with its reason
-# intact instead of vanishing into an empty string.
-OUT="$(omniwmctl command open-menu-anywhere --format json 2>&1)"
-
-# The app icon carries the outcome of the LAST click, which is the only honest
-# thing a click handler can report: there is no tick to repaint on, so a red
-# icon means "the last time you asked, the menu surface was unreachable" and it
-# clears on the next click that works. Silence was the alternative and it is the
-# failure this bar keeps rejecting - a click that does nothing and says nothing.
-#
 # $NAME is the item sketchybar dispatched the click from, so this repaints
 # whatever it is hung off without the name being written down twice. The
-# fallback only matters when the script is run by hand.
-#
-# $PINK, not $FG, is the healthy colour: it is what sketchybarrc paints
-# front_app's icon and what this has to restore to. front_app.sh sets icon and
-# label on every app switch but never touches icon.color, so a red left here
-# would survive every switch until the next successful click - which is the
-# point, but it does mean this and sketchybarrc have to agree on the colour.
+# fallback only matters when the script is run by hand. It is also passed to
+# the helper as --item-name, which is what the panel anchors itself under: get
+# it wrong and the menu opens in the corner instead of below the app name.
 ITEM="${NAME:-front_app}"
-if printf '%s' "$OUT" | jq -e '.ok == true' >/dev/null 2>&1; then
+
+# The bar keeps painting fine with no bundle on disk, so the failure to catch
+# here is "build.sh never produced it" - a missing directory, not a bad exit
+# code from `open`.
+if [ ! -d "$APP" ]; then
+  printf 'sketchybar: app menu not built: %s missing\n' "$APP" >&2
+  sketchybar --set "$ITEM" icon.color="$RED"
+  exit 1
+fi
+
+# --sketchybar-path is passed EXPLICITLY rather than left to the helper's
+# auto-detection, for the same launchd PATH reason above: the helper shells out
+# to sketchybar to find the item's bounding box, and a lookup that fails does
+# not error - it just returns no frame, and the panel opens somewhere arbitrary.
+#
+# The colours are the same ones the hover cards use, so the app menu matches
+# them. Note these are read only at LAUNCH: the helper stays resident, so a
+# palette change needs the running instance killed before it repaints.
+SB_BIN="$(command -v sketchybar || echo /opt/homebrew/bin/sketchybar)"
+
+# open -g: launch without stealing focus, which matters because the helper reads
+# whichever app is frontmost AT THAT MOMENT to decide whose menu to show. A
+# foreground launch would make the helper itself frontmost and it would render
+# its own (empty) menu. Second and later clicks are delivered to the resident
+# instance as a reopen, which toggles the panel.
+if open -g -a "$APP" --args \
+        --item-name "$ITEM" \
+        --sketchybar-path "$SB_BIN" \
+        --background-color "$POPUP_BG" \
+        --border-color "$SEPARATOR" \
+        --foreground-color "$FG" 2>/dev/null; then
   sketchybar --set "$ITEM" icon.color="$PINK"
 else
-  printf 'sketchybar: app menu unreachable: %s\n' "${OUT:-omniwmctl not found on PATH}" >&2
+  # `open` failing is the launch itself being refused - a corrupt or unsignable
+  # bundle, typically after a half-finished build. A DENIED Accessibility grant
+  # does NOT land here: the helper launches fine and puts up its own alert
+  # telling you where to grant it, which is the one failure this cannot report.
+  printf 'sketchybar: app menu failed to launch: %s\n' "$APP" >&2
   sketchybar --set "$ITEM" icon.color="$RED"
 fi
