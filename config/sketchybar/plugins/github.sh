@@ -16,8 +16,8 @@
 # pattern, including the reason the two TTLs are different numbers.
 #
 # ---------------------------------------------------------------------------
-# THE TRANSPORT IS THE gh CLI. IT IS CURRENTLY BLOCKED. DO NOT "FIX" IT BACK
-# TO curl - THAT WAS TRIED, IT WORKED, AND IT WAS DELIBERATELY REMOVED.
+# THE TRANSPORT IS THE gh CLI. DO NOT "FIX" IT TO curl - THAT WAS TRIED, IT
+# WORKED, AND IT WAS DELIBERATELY REMOVED.
 #
 # gh owns the three things a hand-rolled HTTP client has to keep owning
 # forever: the credential (keychain, token refresh, SSO), pagination, and the
@@ -25,7 +25,17 @@
 # rot. So gh is the transport, and this file is a shape-and-cache layer over
 # `gh api` and nothing else.
 #
-# WHAT IS BROKEN TODAY. Aikido's endpoint agent terminates TLS and re-signs
+# THE gh TLS BLOCK IS OVER as of 2026-09-07. `gh api user` returns the login and
+# `github.sh --refresh` classifies ok (2 orgs, 5 repos, 0 review requests), so the
+# widget is live again and needed no code change - it was always correct, just
+# idle behind a failure it named accurately. The account is `stijnsymons`.
+#
+# The rest of this block is kept as HISTORY, not as a description of today. It
+# cost a long diagnosis and the failure can return the moment the endpoint agent
+# is reconfigured or a new machine is enrolled, so the vocabulary below and the
+# measured dead ends stay where the next person will find them.
+#
+# WHAT WAS BROKEN. Aikido's endpoint agent terminates TLS and re-signs
 # api.github.com with its own root. It publishes that root into per-runtime PEM
 # bundles - which is why curl, python and node are all fine - but NOT into the
 # macOS System keychain. gh is a Go binary and Go on darwin verifies through
@@ -35,7 +45,7 @@
 #   x509: “Aikido Endpoint Protection Root CA” certificate is not trusted
 #   ... OSStatus -26276
 #
-# THE SYMPTOM YOU WILL SEE: a yellow GitHub glyph on the bar and a card whose
+# THE SYMPTOM IF IT RETURNS: a yellow GitHub glyph on the bar and a card whose
 # second row reads "gh verifies via the System keychain · Aikido root absent".
 # That is this, it is not a bug in this file, and it is not an auth problem -
 # `GH_TOKEN=<a valid PAT> gh api user` fails identically. Go cannot complete a
@@ -51,10 +61,11 @@
 #     interception root. Strictly worse.
 #   A PAT - see above. Not an auth problem.
 #
-# THE ONLY FIX is the Aikido root landing in the System keychain, which is an
-# MDM matter and is with IT. Until then this widget is correct and idle: it
-# names the exact failure on the card instead of rendering as an empty list,
-# which is the entire reason the failure vocabulary below exists.
+# THE ONLY FIX was the Aikido root landing in the System keychain - an MDM
+# matter, and that is how it cleared. While it was broken the widget was correct
+# and idle: it named the exact failure on the card instead of rendering as an
+# empty list, which is the entire reason the failure vocabulary below exists and
+# why that vocabulary is worth keeping now that the common path is green.
 # ---------------------------------------------------------------------------
 #
 # gh AND jq ARE ON $PATH BECAUSE colors.sh PUT THEM THERE. launchd hands the
