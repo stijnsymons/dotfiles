@@ -33,11 +33,11 @@
                         ]
                     },
                     {
-                        "description": "Right Command -> Hyper on hold, Right Command on tap",
+                        "description": "Tab -> Hyper on hold, Tab on tap",
                         "manipulators": [
                             {
                                 "from": {
-                                    "key_code": "right_command",
+                                    "key_code": "tab",
                                     "modifiers": {
                                         "optional": [
                                             "any"
@@ -56,7 +56,7 @@
                                 ],
                                 "to_if_alone": [
                                     {
-                                        "key_code": "right_command"
+                                        "key_code": "tab"
                                     }
                                 ],
                                 "type": "basic"
@@ -64,14 +64,17 @@
                         ]
                     },
                     {
-                        "description": "App launchers: Option + t/b/o/s/m -> focus-or-open",
+                        "description": "App launchers: Hyper + t/b/o/s/m/e/z/w/f/a/n/1/p -> focus-or-open",
                         "manipulators": [
                             {
                                 "from": {
                                     "key_code": "t",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
@@ -87,7 +90,10 @@
                                     "key_code": "b",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
@@ -103,7 +109,10 @@
                                     "key_code": "o",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
@@ -119,7 +128,10 @@
                                     "key_code": "s",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
@@ -132,10 +144,32 @@
                             },
                             {
                                 "from": {
-                                    "key_code": "z",
+                                    "key_code": "m",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.spotify.client"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "e",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
@@ -148,16 +182,133 @@
                             },
                             {
                                 "from": {
-                                    "key_code": "m",
+                                    "key_code": "z",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.spotify.client"
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh us.zoom.xos"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "w",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh net.whatsapp.WhatsApp"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "f",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.figma.Desktop"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "a",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.apidog.eu.app"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "n",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh notion.id"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "1",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.1password.1password"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "p",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.apple.Preview"
                                     }
                                 ],
                                 "type": "basic"
@@ -165,14 +316,17 @@
                         ]
                     },
                     {
-                        "description": "Ghostty: Option + Return -> new window",
+                        "description": "Ghostty: Hyper + Return -> new window",
                         "manipulators": [
                             {
                                 "from": {
                                     "key_code": "return_or_enter",
                                     "modifiers": {
                                         "mandatory": [
-                                            "option"
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
                                         ]
                                     }
                                 },
