@@ -64,7 +64,7 @@
                         ]
                     },
                     {
-                        "description": "App launchers: Hyper + t/b/o/s/m/e/z/w/f/a/n/1/p -> focus-or-open",
+                        "description": "App launchers: Hyper + t/b/o/s/m/e/z/w/f/i/a/n/1/p -> focus-or-open",
                         "manipulators": [
                             {
                                 "from": {
@@ -221,6 +221,25 @@
                             {
                                 "from": {
                                     "key_code": "f",
+                                    "modifiers": {
+                                        "mandatory": [
+                                            "command",
+                                            "control",
+                                            "option",
+                                            "shift"
+                                        ]
+                                    }
+                                },
+                                "to": [
+                                    {
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.apple.finder"
+                                    }
+                                ],
+                                "type": "basic"
+                            },
+                            {
+                                "from": {
+                                    "key_code": "i",
                                     "modifiers": {
                                         "mandatory": [
                                             "command",
