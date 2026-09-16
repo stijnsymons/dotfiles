@@ -210,6 +210,30 @@ agent_panel_sort = "priority"
 
 # Hide the tab row when a workspace has exactly one tab.
 hide_tab_bar_when_single_tab = true
+
+# Sidebar rows are styled per token, not per focus state: herdr has no
+# "inactive row" selector, so dim here is a constant that applies to every row
+# including the focused one. The contrast therefore has to come from the other
+# side - the focused row keeps active_row_bg behind it and the accent on top -
+# while everything that is only ever context (branch, git status, the agent
+# label, which workspace/tab an agent sits in) drops to dim and stops competing
+# with the pane you are actually looking at.
+#
+# state_icon stays undimmed in both. It is the one thing in the sidebar that is
+# a signal rather than a label - it is how a background agent tells you it
+# needs you - and dimming it would defeat the reason the panel exists.
+[ui.sidebar.spaces]
+rows = [
+    ["state_icon", "workspace"],
+    [{ token = "branch", dim = true }, { token = "git_status", dim = true }],
+]
+
+[ui.sidebar.agents]
+rows = [
+    ["state_icon", { token = "workspace", dim = true }, { token = "tab", dim = true }],
+    [{ token = "agent", dim = true }],
+]
+
 [ui.toast]
 # off = disable pop-up notifications
 # herdr = show in-app toasts
@@ -261,8 +285,12 @@ resume_agents_on_restore = true
 # Requires a Kitty graphics-compatible outer terminal.
 # Enabled so yazi (and other Kitty-graphics apps) can render images in panes.
 kitty_graphics = true
-# Save recent pane screen history across full server restarts.
-pane_history = false
+# Save recent pane screen history across full server restarts. On for the same
+# reason resume_agents_on_restore is: a server restart kills every pane process,
+# and these two are the only things that make one cheap instead of expensive.
+# Without this the panes come back as bare shells in their saved directories
+# with no scrollback to tell you what they were doing.
+pane_history = true
 # While prefix mode is active, temporarily switch the macOS host input
 # source to an ASCII-capable keyboard layout so prefix commands register
 # even when a CJK IME is active, then restore the previous input source
