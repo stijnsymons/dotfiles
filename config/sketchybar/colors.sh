@@ -23,7 +23,7 @@ export PINK=0xffbb9af7            # magenta
 export RED=0xfff7768e             # red
 
 # PATH. launchd starts sketchybar from a login-less context, so gws-now
-# (~/bin), the Productive CLI (~/code/assistant/bin) and jq (the brew prefix)
+# (~/bin), the Productive CLI (~/tools/assistant/bin) and jq (the brew prefix)
 # can all be unreachable and every plugin that shells out silently finds
 # nothing. Repaired here, once, for everything that sources this file.
 #
@@ -32,14 +32,14 @@ export RED=0xfff7768e             # red
 # Homebrew's own launchd plist hands the bar
 # /opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin, which
 # satisfies the sentinel without ever having seen a login shell. The repair was
-# then skipped whole, ~/code/assistant/bin stayed off PATH, `productive` was
+# then skipped whole, ~/tools/assistant/bin stayed off PATH, `productive` was
 # not found, and the timer item fell back to its cache and then to "--".
 #
 # Testing per directory is also what keeps this idempotent: productive.sh
 # sources this file and then runs productive_plan.sh, which sources it again in
 # a child, so an unconditional prepend would grow PATH on every nesting.
 # Prepended in reverse so the listed order is the resulting precedence.
-for _sb_dir in /usr/local/bin /opt/homebrew/bin "$HOME/code/assistant/bin" "$HOME/bin"; do
+for _sb_dir in /usr/local/bin /opt/homebrew/bin "$HOME/tools/assistant/bin" "$HOME/bin"; do
   case ":$PATH:" in
     *":$_sb_dir:"*) ;;
     *) PATH="$_sb_dir:$PATH" ;;

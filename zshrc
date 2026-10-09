@@ -77,7 +77,7 @@ zstyle ':fzf-tab:*' continuous-trigger 'right'
 #-------------------------------------------------------------------------------
 # Path
 #-------------------------------------------------------------------------------
-export PATH=/usr/local/bin:~/bin:~/code/assistant/bin:/usr/local/sbin:~/.cargo/bin:$HOME/.local/bin:$PATH
+export PATH=/usr/local/bin:~/bin:~/tools/assistant/bin:/usr/local/sbin:~/.cargo/bin:$HOME/.local/bin:$PATH
 
 #-------------------------------------------------------------------------------
 # Source private configuration if it exists
@@ -153,7 +153,7 @@ zle -N fzf-history-or-up
 bindkey '^[[A' fzf-history-or-up
 
 # fzf.git
-source ~/code/fzf-git.sh/fzf-git.sh
+source ~/tools/fzf-git.sh/fzf-git.sh
 
 # TUIs (leaf, yazi, ...) can exit without resetting mouse-tracking / alternate-scroll
 # modes, which then makes the mouse wheel emit arrow keys at the prompt — turning

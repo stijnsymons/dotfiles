@@ -57,14 +57,14 @@ create_ws "$HOME/code/caffeinate" "caffeinate"
 create_ws "$HOME/dotfiles" "dotfiles";                     run_claude "$P0"
 
 # 3. assistant — claude + a plain shell pane
-create_ws "$HOME/code/assistant" "assistant";              run_claude "$P0"
+create_ws "$HOME/tools/assistant" "assistant";              run_claude "$P0"
 split_pane "$P0" >/dev/null
 
 # 4. Thoughts
 create_ws "$DRIVE/Thoughts" "Thoughts"
 
 # 5. skills
-create_ws "$HOME/code/skills" "skills"
+create_ws "$HOME/tools/skills" "skills"
 
 # 6. vbrb-0010 (main checkout, claude)
 create_ws "$VBRB" "vbrb-0010-partner-in-benefits";         run_claude "$P0"

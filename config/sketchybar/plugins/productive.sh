@@ -3,7 +3,7 @@
 # a red alarm when nothing is being timed, because untracked hours are the
 # thing that actually costs money.
 #
-# Data comes from `productive timer --json` (~/code/assistant/bin/productive).
+# Data comes from `productive timer --json` (~/tools/assistant/bin/productive).
 # Its exit code is 0 while a timer runs and 1 when none does -- but a network
 # or auth failure also exits 1, so this script keys off the JSON body instead
 # and treats "no parseable JSON" as UNKNOWN, not as "not timing". A dropped

@@ -2,7 +2,7 @@
 # Shared Productive API access for the plugins that need more than the CLI
 # exposes: resolving a booked service to its project, and starting a timer.
 #
-# The CLI (~/code/assistant/bin/productive) covers reads and creating a time
+# The CLI (~/tools/assistant/bin/productive) covers reads and creating a time
 # entry, but has no timer start and no service->project lookup, so those two go
 # straight at the API.
 #

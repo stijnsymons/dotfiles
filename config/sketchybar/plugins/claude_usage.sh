@@ -18,7 +18,7 @@
 # ---------------------------------------------------------------------------
 # SOURCE 1 (preferred): ~/.cache/claude-statusline/rate_limits.json
 #
-# The same number ~/code/claude-statusline draws its "weekly:" bar from:
+# The same number ~/tools/claude-statusline draws its "weekly:" bar from:
 # .rate_limits.seven_day.used_percentage, i.e. percent of the Claude.ai
 # subscription's 7-day limit consumed in the window that ends at .resets_at.
 # Not tokens, not dollars, and not a rolling 7 days from now - it is a fixed

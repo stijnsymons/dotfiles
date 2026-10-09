@@ -35,7 +35,7 @@ _motd_npm_count()  { npm outdated -g --parseable 2>/dev/null | wc -l | tr -d ' '
 _motd_n5_count() {
   # Each repo with any upstream commits counts as 1.
   local count=0 repo ahead
-  for repo in ~/code/brain ~/code/skills ~/code/claude-statusline; do
+  for repo in ~/tools/brain ~/tools/skills ~/tools/claude-statusline; do
     [[ -d "$repo/.git" ]] || continue
     git -C "$repo" fetch --quiet 2>/dev/null
     ahead=$(git -C "$repo" rev-list HEAD..@{u} --count 2>/dev/null)

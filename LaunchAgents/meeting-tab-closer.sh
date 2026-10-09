@@ -156,7 +156,7 @@
 #
 # ASYMMETRY WITH THE SIBLING BROWSER-EXTENSION VARIANT, on purpose: this
 # script enables Notion and Figma behind the heuristic class above.
-# /Users/stijn/code/chrome-auto-meeting-closer (the MV3 extension variant)
+# /Users/stijn/tools/chrome-auto-meeting-closer (the MV3 extension variant)
 # ships Notion/Figma disabled and does NOT implement anything like this
 # heuristic, because it structurally can't: a browser extension has no way
 # to see macOS processes (condition (c), app-running) or which application

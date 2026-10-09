@@ -275,7 +275,7 @@ grep -vE '^[[:space:]]*#' "$CONFIG_DIR/plugins/caffeine_click.sh" | grep -qE 'pk
   && bad "click handler uses a blanket kill" || ok "kills only its own PID"
 
 echo "productive:"
-{ command -v productive >/dev/null || [ -x "$HOME/code/assistant/bin/productive" ]; } \
+{ command -v productive >/dev/null || [ -x "$HOME/tools/assistant/bin/productive" ]; } \
   && ok "CLI reachable" || bad "productive CLI missing"
 PC="$(printf '\357\200\227' | xxd -p)"; PW="$(printf '\357\201\261' | xxd -p)"
 PG="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.value' | tr -d '\n' | xxd -p)"
@@ -398,7 +398,7 @@ chmod +x "$CAW/bin/sketchybar"
 card_away_run() { # card_away_run <log>
   : > "$1"
   SB_AWAY_LOG="$1" XDG_CACHE_HOME="$CAW/cache" \
-  PATH="$CAW/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/bin:$HOME/code/assistant/bin:/usr/bin:/bin" \
+  PATH="$CAW/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/bin:$HOME/tools/assistant/bin:/usr/bin:/bin" \
     "$CONFIG_DIR/plugins/card.sh" away 2>"$1.err"
 }
 
