@@ -66,7 +66,30 @@ else
 fi
 
 # plugins
-[[ -r $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && source $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+# deja replaces zsh-autosuggestions: fuzzy, directory-aware and sequence-aware
+# instead of prefix-only, served by one Go daemon over a socket. Both wrap the
+# same ZLE widgets, so they cannot coexist - deja detects the other and stands
+# down rather than wedge the line editor. The old line is kept commented for a
+# one-character rollback, not out of indecision.
+#[[ -r $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && source $BREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+#
+# Ctrl-N, not the default Ctrl-I, because Ctrl-I IS Tab - one byte (0x09), no
+# terminal distinction - and Tab belongs to fzf-tab. ^N's own binding
+# (down-line-or-history) is the cheapest thing on the table to give up here:
+# history moves on the arrows, and `bindkey '^[[A' fzf-history-or-up` below is
+# where that actually happens.
+#
+# Both exports are read once when the init script is sourced, so they have to
+# come first. DEJA_HIGHLIGHT_STYLE takes the same grammar zsh-autosuggestions
+# used for ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE.
+export DEJA_CYCLE_KEY='^N'
+export DEJA_HIGHLIGHT_STYLE='fg=8'
+if [[ -r $HOME/.local/share/deja/init.zsh ]]; then
+  source $HOME/.local/share/deja/init.zsh
+elif command -v deja >/dev/null 2>&1; then
+  eval "$(deja init zsh)"   # first run only; deja caches the script itself
+fi
+
 [[ -r $BREW_PREFIX/share/fzf-tab/fzf-tab.zsh ]] && source $BREW_PREFIX/share/fzf-tab/fzf-tab.zsh
 
 # preview directories when completing cd
