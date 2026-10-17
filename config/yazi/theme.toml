@@ -3,5 +3,5 @@
 # Flavors themselves are pinned in package.toml; restore them on a new
 # machine with: ya pkg install
 [flavor]
-light = "catppuccin-latte"
-dark  = "catppuccin-macchiato"
+light = "catppuccin-mocha"
+dark  = "catppuccin-mocha"

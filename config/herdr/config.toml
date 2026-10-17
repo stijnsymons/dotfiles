@@ -26,10 +26,14 @@ onboarding = false
 # red = "#ff6188"
 # green = "#a6e3a1"
 
-name = "catppuccin-latte"
+# Stock catppuccin mocha, no overrides. The custom surface/overlay/subtext
+# tables that used to sit here pulled the unfocused panes' chrome toward the
+# background to make the focused one stand out; they are gone deliberately.
+name = "catppuccin"
 auto_switch = true
-light_name = "catppuccin-latte"
-dark_name = "catppuccin"
+dark_name = "catppuccin-mocha"
+# light_name = "catppuccin-latte"
+light_name = "catppuccin-mocha"
 
 [terminal]
 # Executable used for new interactive panes.
