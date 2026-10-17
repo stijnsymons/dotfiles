@@ -270,6 +270,41 @@ caffeine_pid >/dev/null && bad "dead PID reads as running" || ok "dead PID reads
 echo "junk" > "$CSF"
 caffeine_pid >/dev/null && bad "garbage PID file reads as running" || ok "garbage PID file reads as off"
 rm -f "$CSF"
+# The agent hold's liveness falls back to a bare kill -0 when ps(1) is unusable,
+# which is the branch that must NOT swallow a dead pid wherever ps works.
+CAF="$(mktemp)"
+# shellcheck disable=SC2034  # read by caffeine_agent_up(), sourced above
+CAFFEINE_AGENT_FILE="$CAF"
+echo 999999 > "$CAF"
+caffeine_agent_up && bad "dead agent PID reads as holding" || ok "dead agent PID reads as released"
+echo "junk" > "$CAF"
+caffeine_agent_up && bad "garbage agent PID reads as holding" || ok "garbage agent PID reads as released"
+rm -f "$CAF"
+caffeine_agent_up && bad "absent agent PID file reads as holding" || ok "no agent PID file -> released"
+
+# The automatic hold reads sb-helper's published flock, and the freshness gate
+# is the whole point: a dead helper must not pin the machine awake forever.
+CHS="$(mktemp)"
+# shellcheck disable=SC2034  # read by caffeine_agents_working(), sourced above
+CAFFEINE_HELPER_STATE="$CHS"
+printf '{"at":%s,"herdr":{"working":1,"idle":3}}' "$(date +%s)" > "$CHS"
+caffeine_agents_working && ok "fresh flock, 1 working -> hold" || bad "fresh working agent reads as idle"
+printf '{"at":%s,"herdr":{"working":0,"idle":3}}' "$(date +%s)" > "$CHS"
+caffeine_agents_working && bad "0 working reads as hold" || ok "fresh flock, 0 working -> release"
+printf '{"at":%s,"herdr":{"working":2}}' "$(( $(date +%s) - 600 ))" > "$CHS"
+caffeine_agents_working && bad "stale flock still holds" || ok "stale flock -> release"
+printf '{"at":%s}' "$(date +%s)" > "$CHS"
+caffeine_agents_working && bad "no herdr key reads as hold" || ok "no herdr key -> release"
+echo "not json" > "$CHS"
+caffeine_agents_working && bad "garbage flock reads as hold" || ok "garbage flock -> release"
+rm -f "$CHS"
+# Same rule as the manual side: only ever our own PID.
+grep -vE '^[[:space:]]*#' "$CONFIG_DIR/plugins/caffeine.sh" | grep -qE 'pkill|killall' \
+  && bad "agent hold uses a blanket kill" || ok "agent hold kills only its own PID"
+# Without the subscription the hold still works, but only on the 30s tick - so
+# assert the wiring rather than the behaviour, which is all that is observable.
+grep -q -- '--subscribe caffeine herdr_flock' "$CONFIG_DIR/sketchybarrc" \
+  && ok "caffeine listens for herdr_flock" || bad "caffeine not subscribed to herdr_flock"
 # Never a blanket kill: pkill would take out a caffeinate a long build is holding.
 grep -vE '^[[:space:]]*#' "$CONFIG_DIR/plugins/caffeine_click.sh" | grep -qE 'pkill|killall' \
   && bad "click handler uses a blanket kill" || ok "kills only its own PID"

@@ -111,6 +111,12 @@ keep-awake directly, clock for the ISO week + this week's hours + jump-offs to
 the calendar, timesheet and Focus note, Wi-Fi and battery for their Settings
 panes, mic for the privacy pane.
 
+The mug also goes **blue on its own** while the herdr flock reports a working
+agent: an unclickable `caffeinate -idsu` held for as long as an agent is
+running, so a long task cannot be cut off by the machine going to sleep. It is
+independent of the manual toggle underneath it — green/red is yours, blue is
+not — and it is released within seconds of the last agent finishing.
+
 The mic indicator is hidden unless something is actually capturing, the
 now-playing item hides itself when nothing is playing, and the workspace pips
 hide themselves if omniwm's IPC is not answering.

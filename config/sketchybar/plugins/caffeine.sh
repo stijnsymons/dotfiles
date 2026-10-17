@@ -9,6 +9,13 @@
 # Red is deliberately alarming: -dimu keeps the SCREEN on, which is the mode you
 # do not want to leave running by accident on battery.
 #
+# A fourth colour is not part of the cycle and is not yours to click:
+#
+#   blue   caffeinate -idsu  an agent is working (herdr flock), hands off
+#
+# That one is held automatically for as long as the flock reports a working
+# agent, and it outranks both manual colours because it holds strictly more.
+#
 # Click handling lives in caffeine_click.sh, which sources this file for the
 # helpers below.
 #
@@ -32,6 +39,24 @@ CAFFEINE_STATE_FILE="$CAFFEINE_STATE_DIR/caffeine.pid"
 # this widget ever started, so a cycle that spans an upgrade reads correctly
 # instead of rendering an unknown colour.
 CAFFEINE_MODE_FILE="$CAFFEINE_STATE_DIR/caffeine.mode"
+
+# The automatic hold. While any herdr agent is working the machine stays fully
+# awake, whatever the manual toggle is doing. It gets a pid file of its OWN
+# rather than a third mode in the files above: an agent starting must not stomp
+# a -dimu the user chose, and a click must not release a hold an agent still
+# needs. The two caffeinates coexist; each is tracked and killed only by its
+# own side.
+CAFFEINE_AGENT_FILE="$CAFFEINE_STATE_DIR/caffeine.agent.pid"
+# -idsu, per the ask: idle, display, disk, and wake the screen if it is already
+# off. Strictly stronger than either manual mode, which is why it wins the
+# colour below.
+CAFFEINE_AGENT_ARGS="-idsu"
+
+# Who is working, per the flock sb-helper already polls every 10s and publishes.
+# NOT `herdr agent list` again: that fork was the most expensive item on the bar
+# and the helper exists to have paid for it once.
+CAFFEINE_HELPER_STATE="$SB_CACHE_DIR/helper-state.json"
+CAFFEINE_HELPER_MAX_AGE=40   # four of the helper's 10s flock ticks, plus slack
 
 # The cycle, in order. off is the absence of a pid file rather than a value.
 #
@@ -64,13 +89,15 @@ CAFFEINE_ICON="$(printf '\363\260\205\266')"
 # "I turned it on and the cup is still grey".
 CAFFEINE_ITEM="caffeine"
 
-# Print the PID of our live caffeinate, or return 1. A PID file alone proves
+# Print the PID of a live caffeinate of ours, or return 1. Takes the state file
+# to read, defaulting to the manual one, so the agent hold reuses the liveness
+# rule rather than a second copy of it. A PID file alone proves
 # nothing: PIDs are recycled, so the process must be alive AND still be a
 # caffeinate. Anything else is stale and reads as "off".
 caffeine_pid() {
-  local pid comm
-  [ -r "$CAFFEINE_STATE_FILE" ] || return 1
-  pid="$(cat "$CAFFEINE_STATE_FILE" 2>/dev/null | tr -d '[:space:]')"
+  local pid comm file="${1:-$CAFFEINE_STATE_FILE}"
+  [ -r "$file" ] || return 1
+  pid="$(cat "$file" 2>/dev/null | tr -d '[:space:]')"
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
   kill -0 "$pid" 2>/dev/null || return 1
   comm="$(ps -p "$pid" -o comm= 2>/dev/null)"
@@ -103,22 +130,82 @@ caffeine_next() {
   fi
 }
 
+# True while at least one agent is working. Stale or missing state reads as
+# none: a helper that died must not pin the machine awake for as long as its
+# last file survives, and `missing herdr key` is the normal reading when herdr
+# is not running at all.
+caffeine_agents_working() {
+  local n
+  n="$(jq -er --argjson max "$CAFFEINE_HELPER_MAX_AGE" --argjson now "$(date +%s)" \
+       'if ($now - (.at // 0)) < $max then (.herdr.working // 0) else 0 end' \
+       "$CAFFEINE_HELPER_STATE" 2>/dev/null)" || return 1
+  case "$n" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$n" -gt 0 ]
+}
+
+# Is the automatic hold up? caffeine_pid's rule, plus one fallback: if ps(1)
+# itself is unusable (sandbox, no proc list) it cannot tell "dead" from
+# "unverifiable", and on THIS file the two must not read the same. Sync runs
+# unattended every tick, so reading an unverifiable pid as dead would spawn a
+# caffeinate per tick forever, each orphaned by the next overwrite of the file.
+# The ps -p $$ probe is what keeps that fallback from swallowing the recycled-
+# pid case it would otherwise mask: a working ps means caffeine_pid's "no" is
+# the truth, and a stale file after a reboot is still cleaned up.
+caffeine_agent_up() {
+  local pid
+  caffeine_pid "$CAFFEINE_AGENT_FILE" >/dev/null && return 0
+  ps -p $$ -o comm= >/dev/null 2>&1 && return 1
+  pid="$(cat "$CAFFEINE_AGENT_FILE" 2>/dev/null | tr -d '[:space:]')"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null
+}
+
+# Make the automatic hold match the flock. Idempotent - it runs on every tick
+# and on every herdr_flock event, and does nothing when the two already agree -
+# which is also what reaps a hold left behind by a crash or a reload.
+caffeine_agent_sync() {
+  local pid
+  if caffeine_agents_working; then
+    caffeine_agent_up && return 0
+    # nohup + disown for the same reason as the click handler: sketchybar reaps
+    # the plugin, and a plain background job takes the SIGHUP with it.
+    # shellcheck disable=SC2086  # our own literal, deliberately word-split
+    nohup caffeinate $CAFFEINE_AGENT_ARGS >/dev/null 2>&1 &
+    pid=$!
+    disown "$pid" 2>/dev/null || true
+    kill -0 "$pid" 2>/dev/null && printf '%s\n' "$pid" > "$CAFFEINE_AGENT_FILE"
+  elif pid="$(caffeine_pid "$CAFFEINE_AGENT_FILE")"; then
+    kill "$pid" 2>/dev/null
+    rm -f "$CAFFEINE_AGENT_FILE"
+  fi
+  return 0
+}
+
 caffeine_render() {
+  local colour=""
+  # Agent hold first: -idsu holds strictly more than either manual mode, and
+  # blue is the colour herdr already paints a working agent, so the mug reads
+  # "something else is holding this, your click will not release it".
+  if caffeine_agent_up; then
+    colour="$BLUE"
+  else
+    rm -f "$CAFFEINE_AGENT_FILE"
+  fi
   if caffeine_pid >/dev/null; then
-    local colour
-    case "$(caffeine_mode)" in
-      dimu) colour="$RED" ;;
-      *)    colour="$GREEN" ;;
-    esac
-    sketchybar --set "$CAFFEINE_ITEM" icon="$CAFFEINE_ICON" icon.color="$colour"
+    if [ -z "$colour" ]; then
+      case "$(caffeine_mode)" in
+        dimu) colour="$RED" ;;
+        *)    colour="$GREEN" ;;
+      esac
+    fi
   else
     # Stale or bogus state file (killed externally, PID recycled): forget it,
     # so the next click starts fresh instead of trying to kill a stranger.
     # The mode goes with it - a mode left behind would colour the next cycle's
     # first state red.
     rm -f "$CAFFEINE_STATE_FILE" "$CAFFEINE_MODE_FILE"
-    sketchybar --set "$CAFFEINE_ITEM" icon="$CAFFEINE_ICON" icon.color="$FG_DIM"
   fi
+  sketchybar --set "$CAFFEINE_ITEM" icon="$CAFFEINE_ICON" icon.color="${colour:-$FG_DIM}"
 }
 
 if [ -z "${CAFFEINE_LIB:-}" ]; then
@@ -128,7 +215,10 @@ if [ -z "${CAFFEINE_LIB:-}" ]; then
   # do. The definitions above are set-u-clean either way.
   set -u
   # No card_dispatch: the click is a direct toggle now, so this item owns no
-  # popup to close and is not in $CARD_ITEMS. All this tick does is re-validate
-  # the PID and repaint, which is what catches a caffeinate killed from outside.
+  # popup to close and is not in $CARD_ITEMS. All this tick does is reconcile
+  # the automatic hold, re-validate the PIDs and repaint - which is what catches
+  # a caffeinate killed from outside, and what makes the agent hold survive a
+  # missed herdr_flock event.
+  caffeine_agent_sync
   caffeine_render
 fi

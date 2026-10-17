@@ -449,6 +449,13 @@ sketchybar --add item battery right \
 # awake, dim = off. update_freq re-validates the PID, so a caffeinate killed
 # from outside (or a recycled PID) goes gray on its own within 30s.
 #
+# herdr_flock is the other half: the helper fires it when the flock's shape
+# changes, which includes "a working agent appeared / the last one finished",
+# and that is what starts and stops the automatic `caffeinate -idsu` (blue mug)
+# in seconds rather than on the 30s tick. The tick stays as the backstop for a
+# missed event - the hold is reconciled from the published flock either way, so
+# both paths are the same code.
+#
 # The click toggles directly rather than opening a card. A two-state switch
 # behind a popup meant two clicks and a read to do what the icon colour already
 # tells you, so caffeine_click.sh is wired straight to the item. It renders to
@@ -459,7 +466,8 @@ sketchybar --add item caffeine right \
   --set caffeine update_freq=30 \
   label.drawing=off \
   script="$PLUGIN_DIR/caffeine.sh" \
-  click_script="$PLUGIN_DIR/caffeine_click.sh"
+  click_script="$PLUGIN_DIR/caffeine_click.sh" \
+  --subscribe caffeine herdr_flock
 
 # wifi_change is what actually moves this item, and it fires the moment the
 # association changes. The poll is only a backstop for a missed event, so it

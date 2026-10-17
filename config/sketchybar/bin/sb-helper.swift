@@ -868,12 +868,17 @@ slowTimer.setEventHandler {
     args += closeStuckCards()
     bar.send(args)
 
+    // Published BEFORE the trigger. herdr_flock wakes subscribers that read
+    // this file - plugins/caffeine.sh decides whether to hold the machine awake
+    // from .herdr.working - and a trigger sent first hands them the PREVIOUS
+    // tick's counts, i.e. the state that has just stopped being true.
+    publish(net: netRates, flock: flock)
+
     let shape = flockShape(flock)
     if shape != lastFlockShape {
         lastFlockShape = shape
         bar.send(["--trigger", "herdr_flock"])
     }
-    publish(net: netRates, flock: flock)
 }
 slowTimer.resume()
 
