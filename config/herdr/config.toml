@@ -233,9 +233,14 @@ rows = [
 ]
 
 [ui.sidebar.agents]
+# Second row is `claude <session title>`: terminal_title_stripped is the agent's
+# own terminal title with the state glyph taken off the front, which for Claude
+# Code is the session name it gives itself. The glyph is redundant beside
+# state_icon on the row above, hence the stripped token rather than
+# terminal_title.
 rows = [
     ["state_icon", { token = "workspace", dim = true }, { token = "tab", dim = true }],
-    [{ token = "agent", dim = true }],
+    [{ token = "agent", dim = true }, { token = "terminal_title_stripped", dim = true }],
 ]
 
 [ui.toast]
