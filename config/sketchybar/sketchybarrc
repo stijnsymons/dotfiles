@@ -237,15 +237,43 @@ card_rows_for() { # card_rows_for <item>
   sketchybar "${args[@]}"
 }
 
-##### Left: workspaces | focused app #####
-# Five pips for the five workspaces alt-1..alt-5 reach, so "which workspace"
-# then "which app" reads left to right in one glance.
+##### Left: focused app | workspaces #####
+# front_app is added first, so it sits hard against the bar's left edge: the
+# app you are in is what gets glanced at most, and this is the one slot whose
+# left edge never moves.
 #
-# The pips are fixed-width - all four are always drawn, occupancy is carried in
-# the colour - which makes them a stable anchor for everything to their right:
-# nothing shuffles sideways as workspaces fill and empty. front_app behind them
-# still varies, and meeting and productive already fit themselves against that
-# every tick.
+# The cost of putting it there is paid by everything behind it. front_app is
+# the only variable-width item in this cluster (label.max_chars=25), and the
+# pips used to absorb that by sitting in front of it - fixed-width, so nothing
+# downstream shuffled as workspaces filled and emptied. Reversed, an app-name
+# change now nudges the pips, meeting and productive sideways. Give front_app a
+# fixed label.width if that becomes distracting; it is left elastic because a
+# truncated app name is worse than a small shift.
+#
+# Five pips for the five workspaces alt-1..alt-5 reach - all five always drawn,
+# occupancy carried in the colour.
+
+# Clicking it drops the focused app's own menu bar under the pointer, via
+# omniwm's open-menu-anywhere - the menus the real menu bar would show if it
+# were not auto-hidden behind the notch. The item that names the app is the
+# obvious place to hang them; this briefly lived on a dedicated  item, which
+# promised an Apple menu and delivered these instead.
+#
+# icon.color is load-bearing beyond the theme: app_menu.sh repaints it red when
+# the menu surface is unreachable and back to this colour when a click works, so
+# the two have to agree on $PINK. front_app.sh sets icon and label on a switch
+# but never the colour, which is what lets a red survive until the next good
+# click instead of being wiped by the next app switch.
+sketchybar --add item front_app left \
+  --set front_app icon.color="$PINK" \
+  label.max_chars=25 \
+  label.font="$FONT_TEXT:Regular:13.0" \
+  script="$PLUGIN_DIR/front_app.sh" \
+  click_script="$PLUGIN_DIR/app_menu.sh" \
+  --subscribe front_app front_app_switched
+
+# Rule between the focused app and the workspace cluster.
+sketchybar --add item sep.now left --set sep.now "${separator[@]}"
 #
 # Digits rather than dots or app icons: the digit IS the keystroke, so the pip
 # is a legend for alt-1..alt-5 as much as it is a state readout. Icon-only and
@@ -300,29 +328,10 @@ sketchybar --add item space_watch left \
   front_app_switched \
   system_woke
 
-# Rule between the workspace cluster and the focused app. workspaces.sh
-# hides it alongside the pips when the window manager is not up, so a hidden
-# cluster never leaves a rule dangling against the bar's left edge.
+# Rule between the workspace cluster and what follows it. workspaces.sh hides
+# it alongside the pips when the window manager is not up, so a hidden cluster
+# collapses to a single rule rather than leaving two stacked together.
 sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
-
-# Clicking it drops the focused app's own menu bar under the pointer, via
-# omniwm's open-menu-anywhere - the menus the real menu bar would show if it
-# were not auto-hidden behind the notch. The item that names the app is the
-# obvious place to hang them; this briefly lived on a dedicated  item, which
-# promised an Apple menu and delivered these instead.
-#
-# icon.color is load-bearing beyond the theme: app_menu.sh repaints it red when
-# the menu surface is unreachable and back to this colour when a click works, so
-# the two have to agree on $PINK. front_app.sh sets icon and label on a switch
-# but never the colour, which is what lets a red survive until the next good
-# click instead of being wiped by the next app switch.
-sketchybar --add item front_app left \
-  --set front_app icon.color="$PINK" \
-  label.max_chars=25 \
-  label.font="$FONT_TEXT:Regular:13.0" \
-  script="$PLUGIN_DIR/front_app.sh" \
-  click_script="$PLUGIN_DIR/app_menu.sh" \
-  --subscribe front_app front_app_switched
 
 # herdr_flock has to be declared here, ABOVE its subscribers: meeting and
 # productive both subscribe to it, and a custom event must exist before anything
@@ -330,8 +339,6 @@ sketchybar --add item front_app left \
 # the bar, next to media - see "Right: herdr flock" further down - but the event
 # declaration cannot follow it without breaking those two subscriptions.
 sketchybar --add event herdr_flock
-
-sketchybar --add item sep.now left --set sep.now "${separator[@]}"
 
 # Current meeting (hides itself when nothing is running).
 #
