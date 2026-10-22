@@ -21,17 +21,26 @@ return {
     },
   },
 
-  -- 3. Install the automatic switcher plugin
+  -- 3. Follow the terminal's light/dark mode live. Neovim only reads the
+  -- terminal background at startup, and auto-dark-mode.nvim polled macOS, which
+  -- would undo a `theme` override. So poll the same answer Ghostty, leaf and the
+  -- bar use: `theme status` (the override if set, else macOS).
+  -- ponytail: one fork every 2s per nvim; push over nvim's RPC socket from
+  -- ~/.config/ghostty/theme if that ever shows up.
   {
-    "f-person/auto-dark-mode.nvim",
-    opts = {
-      update_interval = 1000, -- Check for OS theme changes every 1 second
-      set_dark_mode = function()
-        vim.api.nvim_set_option_value("background", "dark", {})
-      end,
-      set_light_mode = function()
-        vim.api.nvim_set_option_value("background", "light", {})
-      end,
-    },
+    "LazyVim/LazyVim",
+    init = function()
+      local cmd = vim.fn.expand("~/.config/ghostty/theme")
+      if vim.fn.executable(cmd) == 0 then return end
+      vim.uv.new_timer():start(0, 2000, function()
+        vim.system({ cmd, "status" }, { text = true }, function(r)
+          local mode = vim.trim(r.stdout or "")
+          if mode ~= "light" and mode ~= "dark" then return end
+          vim.schedule(function()
+            if vim.o.background ~= mode then vim.o.background = mode end
+          end)
+        end)
+      end)
+    end,
   },
 }

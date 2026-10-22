@@ -1,0 +1,8 @@
+#!/bin/sh
+# leaf, themed to match ghostty's CURRENT mode (macOS, or the `theme` override).
+# leaf has no light/dark detection of its own and config.toml takes one fixed
+# theme, so the choice is made here, at launch. zshrc aliases `leaf` to this;
+# yazi's markdown previewer calls it too.
+theme=ghostty-light.toml
+[ "$("$HOME/.config/ghostty/theme" status)" = dark ] && theme=ghostty.toml
+exec leaf --theme "$HOME/.config/leaf/$theme" "$@"

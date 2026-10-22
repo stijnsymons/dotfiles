@@ -1,0 +1,43 @@
+#!/bin/sh
+# theme - light/dark for the terminal only, leaving macOS alone.
+#   theme           toggle
+#   theme light     force light
+#   theme dark      force dark
+#   theme auto      drop the override, follow macOS again
+#   theme status    print the effective mode (light|dark)
+#
+# The override is one Ghostty include, ~/.local/state/theme.ghostty, pulled in
+# by the last line of ./config. SIGUSR2 makes Ghostty reload it; everything
+# inside the terminal (nvim, herdr, claude code, yazi) follows Ghostty's
+# background rather than macOS, and leaf asks `theme status` at launch.
+# Forcing the mode macOS is already in drops the override instead, so toggling
+# twice is back to following the system.
+set -eu
+state="$HOME/.local/state/theme.ghostty"
+
+system() { defaults read -g AppleInterfaceStyle >/dev/null 2>&1 && echo dark || echo light; }
+current() {
+  case "$(cat "$state" 2>/dev/null)" in
+    *Latte*) echo light ;;
+    *Mocha*) echo dark ;;
+    *) system ;;
+  esac
+}
+
+case "${1:-toggle}" in
+  status) current; exit 0 ;;
+  toggle) [ "$(current)" = dark ] && to=light || to=dark ;;
+  light | dark | auto) to=$1 ;;
+  *) echo 'usage: theme [light|dark|auto|status]' >&2; exit 1 ;;
+esac
+
+if [ "$to" = auto ] || [ "$to" = "$(system)" ]; then
+  rm -f "$state"
+else
+  mkdir -p "${state%/*}"
+  [ "$to" = light ] && flavour=Latte || flavour=Mocha
+  echo "theme = Catppuccin $flavour" > "$state"
+fi
+
+pkill -USR2 -x ghostty || true
+sketchybar --trigger appearance_change >/dev/null 2>&1 || true

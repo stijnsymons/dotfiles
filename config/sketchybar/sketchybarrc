@@ -476,6 +476,17 @@ sketchybar --add item caffeine right \
   click_script="$PLUGIN_DIR/caffeine_click.sh" \
   --subscribe caffeine herdr_flock
 
+# Light/dark toggle for the TERMINAL, left of the mug - macOS is left alone.
+# Click runs ~/.config/ghostty/theme (the same `theme` as in zsh), which
+# triggers appearance_change itself; the macOS notification behind that event
+# covers the other path, a sunset switch while no override is set.
+sketchybar --add event appearance_change AppleInterfaceThemeChangedNotification
+sketchybar --add item appearance right \
+  --set appearance label.drawing=off \
+  script="$PLUGIN_DIR/appearance.sh" \
+  click_script="$HOME/.config/ghostty/theme" \
+  --subscribe appearance appearance_change
+
 # wifi_change is what actually moves this item, and it fires the moment the
 # association changes. The poll is only a backstop for a missed event, so it
 # runs at 60 rather than 15 - each tick spawned networksetup + ipconfig for an

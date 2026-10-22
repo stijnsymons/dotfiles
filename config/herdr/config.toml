@@ -32,8 +32,7 @@ onboarding = false
 name = "catppuccin"
 auto_switch = true
 dark_name = "catppuccin-mocha"
-# light_name = "catppuccin-latte"
-light_name = "catppuccin-mocha"
+light_name = "catppuccin-latte"
 
 [terminal]
 # Executable used for new interactive panes.
