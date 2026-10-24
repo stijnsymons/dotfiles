@@ -72,6 +72,18 @@ idle() {
   exit 0
 }
 
+# The calendar answered, with "your token is dead". Hiding would look exactly
+# like a calendar outage; this is fixable by you, so say so.
+reauth() {
+  sketchybar --set sep.timing drawing=on
+  sketchybar --set "$ITEM" drawing=on \
+                           icon="$ROOM" \
+                           icon.color="$RED" \
+                           label.color="$RED" \
+                           label="$(fit_label "$ITEM" "calendar: gws auth login" "$FIT_RESERVE")"
+  exit 0
+}
+
 # --- fetch ------------------------------------------------------------------
 STALE=0
 if [ -n "${MEETING_FIXTURE:-}" ]; then
@@ -82,16 +94,25 @@ else
   # One windowed call, then derive both halves from it: the event running right
   # now, and everything after it. gws-now answers only the first question and
   # would mean a second request per tick for the list and the announcement.
-  WINDOW="$(meeting_fetch)"
+  WINDOW="$(meeting_fetch)"; FETCH_RC=$?
+  [ "$FETCH_RC" -eq 2 ] && reauth
   if [ -z "$WINDOW" ]; then
     EVENT=""                                        # call failed: unknown
   else
     NOW_TS="$(date -u +%s)"
-    EVENT="$(jq -c --argjson t "$NOW_TS" 'map(select(._s <= $t and ._e > $t)) | .[0] // "null"' <<<"$WINDOW" 2>/dev/null)"
+    # Overlapping meetings: the shortest one wins the bar - it is the one that
+    # ends first, so the one you are most likely actually in.
+    EVENT="$(jq -c --argjson t "$NOW_TS" 'map(select(._s <= $t and ._e > $t)) | min_by(._e - ._s) // "null"' <<<"$WINDOW" 2>/dev/null)"
     [ "$EVENT" = '"null"' ] && EVENT="null"
+    # Everything but the bar's event: the other overlapping ones first, shortest
+    # on top, then what is still to come. The announcer filters on _s > now
+    # itself, so the ongoing ones never re-announce.
     # Write-then-rename: the card and the announcer read this file on their own
     # schedule and must never catch it half-written.
-    jq -c --argjson t "$NOW_TS" 'map(select(._s > $t))' <<<"$WINDOW" > "$UPCOMING.tmp.$$" 2>/dev/null \
+    jq -c --argjson t "$NOW_TS" --argjson cur "$EVENT" '
+      map(select(.id != ($cur | .id?)))
+      | sort_by(if ._s <= $t then [0, ._e - ._s] else [1, ._s] end)
+    ' <<<"$WINDOW" > "$UPCOMING.tmp.$$" 2>/dev/null \
       && mv "$UPCOMING.tmp.$$" "$UPCOMING" || rm -f "$UPCOMING.tmp.$$"
     # Schedule the 1-minute overlay off the freshly written list. Runs on every
     # tick and dedups internally, so a missed tick just means the next one

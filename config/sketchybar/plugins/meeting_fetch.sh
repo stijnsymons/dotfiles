@@ -32,9 +32,14 @@ meeting_fetch() {
   raw="$(${tmo:+"$tmo" 20} gws calendar events list --params "$(jq -nc \
           --arg cal "$cal" --arg min "$now" --arg max "$until" \
           '{calendarId:$cal, timeMin:$min, timeMax:$max, singleEvents:true,
-            orderBy:"startTime", maxResults:25, timeZone:"UTC"}')" 2>/dev/null)"
-
-  [ -n "$raw" ] || return 1
+            orderBy:"startTime", maxResults:25, timeZone:"UTC"}')" 2>/dev/null)" || {
+    # gws prints its error as JSON on stdout. Read as a calendar, that was
+    # `.items[]?` -> [] -> "no meetings" mid-call whenever the token expired.
+    # 2 lets meeting.sh say "re-auth" instead of hiding.
+    grep -q authError <<<"$raw" && return 2
+    return 1
+  }
+  jq -e 'has("items")' >/dev/null 2>&1 <<<"$raw" || return 1
   # _e falls back to the start: Google allows endTimeUnspecified, and one such
   # event would abort the whole jq - which reads downstream as a failed fetch
   # and blanks the meeting subsystem for everything else in the window.

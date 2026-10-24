@@ -339,6 +339,8 @@ sketchybar --add item sep.spaces left --set sep.spaces "${separator[@]}"
 # the bar, next to media - see "Right: herdr flock" further down - but the event
 # declaration cannot follow it without breaking those two subscriptions.
 sketchybar --add event herdr_flock
+# Fired by the meeting card's Refresh row.
+sketchybar --add event meeting_refresh
 
 # Current meeting (hides itself when nothing is running).
 #
@@ -360,7 +362,7 @@ sketchybar --add item meeting left \
   click_script="$PLUGIN_DIR/card.sh meeting toggle" \
   script="$PLUGIN_DIR/meeting.sh" \
   --set meeting "${card_popup[@]}" \
-  --subscribe meeting system_woke herdr_flock mouse.exited.global
+  --subscribe meeting system_woke herdr_flock meeting_refresh mouse.exited.global
 
 # Divider between the two "right now" items. meeting.sh hides this alongside
 # itself on the failed-fetch path, so a hidden meeting never leaves a rule

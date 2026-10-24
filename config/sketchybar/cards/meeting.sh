@@ -17,6 +17,7 @@ card_rows() {
     printf '󰃭\t%s\tNo meeting right now\t%s\n' "$FG_DIM" "$CONFIG_DIR/plugins/brave_tab.sh 2"
     # Still list what is coming - an empty right-now is exactly when the
     # upcoming list is the useful part of this card.
+    meeting_refresh_row
     meeting_upcoming_rows
     return
   fi
@@ -56,7 +57,14 @@ card_rows() {
           | sed -E 's/&nbsp;/ /g; s/&amp;/\&/g; s/  +/ /g; s/^ +//; s/ +$//')"
   [ -n "$desc" ] && printf '󰎞\t%s\t%s\t%s\n' "$FG_DIM" "$(card_text "$desc")" "$cal"
 
+  meeting_refresh_row
   meeting_upcoming_rows
+}
+
+# Re-runs meeting.sh now instead of waiting out update_freq. Above the upcoming
+# list so a long list can never push it past the row budget.
+meeting_refresh_row() {
+  printf '󰑐\t%s\tRefresh\t%s\n' "$FG_DIM" "sketchybar --trigger meeting_refresh"
 }
 
 # The rest of the window, below the current meeting's detail. Each row is
