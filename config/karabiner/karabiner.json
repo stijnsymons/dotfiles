@@ -156,7 +156,7 @@
                                 },
                                 "to": [
                                     {
-                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh com.spotify.client"
+                                        "shell_command": "/Users/stijn/.config/sketchybar/bin/focus-or-open.sh dev.nolight.sonora"
                                     }
                                 ],
                                 "type": "basic"
