@@ -1,0 +1,1 @@
+{ "place": "none", "title": "Find file in nvim", "overlay": { "kind": "popup", "at": "top", "width": 1, "height": 1 } }
