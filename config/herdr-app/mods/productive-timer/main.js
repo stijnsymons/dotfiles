@@ -16,7 +16,7 @@
 // come from the board (identical to the bar). Green/red are state only, and the board
 // never hands a booking either.
 //
-// v2 adds: the running booking's name in the anchor (when there is room), hover detail
+// v2 adds: hover detail
 // blocks (popup above a chip; fixed lines beneath the week bar and the day columns),
 // planned hours + a pie per row (amber ring for the excess), and the Focus "Upcoming"
 // checklist (focus_upcoming.sh lists and toggles; this mod never touches the note itself).
@@ -183,6 +183,25 @@ export default class ProductiveTimer extends View {
     return Math.max(0, Math.floor((Date.now() - t) / 60000));
   }
 
+  // The running row's ■: same script, no booking to start after.
+  stop(cx) {
+    if (this.busy) return;
+    this.busy = String(this.board?.running?.service_id);
+    cx.notify();
+    cx.spawn(async (cx) => {
+      let r = null;
+      try {
+        r = await exec("env", [`CONFIG_DIR=${home()}/.config/sketchybar`, `SB_CACHE_DIR=${home()}/.cache/sketchybar`, "bash", SWITCH, "--stop"]);
+      } catch (e) {
+        r = { code: 1, stderr: String(e) };
+      }
+      if (r.code !== 0) notify({ title: "Could not stop the timer", body: (r.stderr || "").trim().split("\n").pop() || "Opened Productive instead.", level: "warning" });
+      for (const ms of [2500, 5000, 10000]) { await cx.sleep(ms); await this.load(cx); }
+      this.busy = null;
+      cx.notify();
+    });
+  }
+
   switchTo(b, cx) {
     const running = this.board?.running;
     if (this.busy || (running && String(running.service_id) === String(b.service_id))) return; // clicking the running booking is a no-op
@@ -227,16 +246,7 @@ export default class ProductiveTimer extends View {
       ? div().size(7).rounded(4).bg(green).loop("opacity", { from: 0.35, to: 1, period: 1400 })
       : st === "idle" ? div().child("⚠").text_color(red).loop("opacity", { from: 0.55, to: 1, period: 1100 })
       : div().child("◷").text_color(t.dim);
-    // Room for the booking name: the window width less everything else on the strip (estimated: gpui gives
-    // no measured width back). Under ~8 chars the name is dropped; truncate() is the safety net.
     const chipList = (b?.chips ?? []).map((k) => byKey[k]).filter(Boolean);
-    let vw = 0;
-    try { vw = window.viewport_size().width; } catch (_e) { /* no window: no name */ }
-    const used = 20 + 16 + 7 + 6 + 52 + (live && over > 0 ? 34 : 0) + 6 * 3 + (live ? 190 : 0)
-      + chipList.reduce((a, c) => a + 23 + 4 + c.code.length * 7.4 + (c.pinned ? 12 : 0), 0);
-    const nameChars = Math.floor((vw - used) / 6.6);
-    const runName = runKey ? (byKey[runKey]?.name ?? b.running?.name ?? "") : "";
-    const showName = st === "running" && runName && nameChars >= 8;
     const anchor = h_flex().id("anchor").h(22).px(8).gap(6).items_center().rounded(5).cursor_pointer().text_size(12)
       .when(st === "idle", (el) => el.bg(tint(red, 0.16)))
       .hover((s) => s.bg(st === "idle" ? tint(red, 0.26) : t.hover))
@@ -246,7 +256,6 @@ export default class ProductiveTimer extends View {
       .child(st === "running"
         ? div().text_color(green).font_semibold().child(fmtElapsed((b.running?.elapsed_minutes ?? 0) + add))
         : st === "idle" ? div().text_color(red).child("not timing") : div().text_color(t.dim).child("--"))
-      .when(showName, (el) => el.child(div().min_w(0).truncate().whitespace_nowrap().text_color(t.muted).child(clip(runName, nameChars))))
       .when(live && over > 0, (el) => el.child(div().text_color(amber).font_semibold().child(`+${Math.round(over / 60)}h`)));
 
     const chips = chipList.map((c) => {
@@ -400,7 +409,7 @@ export default class ProductiveTimer extends View {
       if (on) play = play.loop("opacity", { from: 0.65, to: 1, period: 1400 });
       let row = h_flex().id(`row-${x.key}`).h(28).pr(4).gap(10).items_center().rounded(5).cursor_pointer()
         .bg(on ? tint(green, 0.12) : "#00000000").hover((s) => s.bg(on ? tint(green, 0.18) : t.hover))
-        .on_click((_e, cx) => this.switchTo(x, cx))
+        .on_click((_e, cx) => (on ? this.stop(cx) : this.switchTo(x, cx)))
         .child(div().w(4).h(18).rounded(2).flex_none().bg(x.color))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center().truncate()
           .child(div().truncate().text_color(t.foreground).child(x.project))

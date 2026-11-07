@@ -78,25 +78,9 @@ source "$CONFIG_DIR/plugins/productive_chips.sh"
 CHIPS_RESERVE=${CHIPS_RESERVE:-230}
 IDLE_TINT=0x29f7768e     # RED at 16%: the alarm reads as a patch, not just a glyph
 
-# The booking's full name follows the elapsed time when the bar has room for it:
-# fit_label truncates "<elapsed> <name>" to what fits before the notch, and a name
-# that would get fewer than NAME_MIN visible characters is dropped altogether - a
-# stub like "vb…" tells nothing (counted without the "…" and the space). fit_label's own floor (8 chars) is why the check
-# is on the result and not on the room.
-NAME_MIN=8
-set_running() { # $1 = elapsed, $2 = booking name (may be empty)
-  local label="$1" full
-  if [ -n "${2:-}" ]; then
-    full="$(fit_label "$NAME" "$1 $2" "$CHIPS_RESERVE")"
-    case "$full" in
-      *…) [ $(( ${#full} - ${#1} - 2 )) -ge "$NAME_MIN" ] && label="$full" ;;
-      *)  label="$full" ;;
-    esac
-  else
-    label="$(fit_label "$NAME" "$1" "$CHIPS_RESERVE")"
-  fi
+set_running() { # $1 = elapsed
   sketchybar --set "$NAME" drawing=on background.drawing=off \
-    icon="$CLOCK" icon.color="$GREEN" label="$label" label.color="$GREEN"
+    icon="$CLOCK" icon.color="$GREEN" label="$(fit_label "$NAME" "$1" "$CHIPS_RESERVE")" label.color="$GREEN"
 }
 set_idle()    { sketchybar --set "$NAME" drawing=on background.drawing=on background.color="$IDLE_TINT" \
                   icon="$WARN"  icon.color="$RED"   label="$(fit_label "$NAME" "not timing" "$CHIPS_RESERVE")" label.color="$RED"; }
@@ -104,7 +88,7 @@ set_unknown() { sketchybar --set "$NAME" drawing=on background.drawing=off \
                   icon="$CLOCK" icon.color="$FG_DIM" label="--" label.color="$FG_DIM"; }
 
 render() {        # $1 = json, $2 = age of that json in seconds
-  local json=$1 age=${2:-0} elapsed svc bname
+  local json=$1 age=${2:-0} elapsed
 
   if [ "$(printf '%s' "$json" | jq -r '.running')" != "true" ]; then
     STATE=idle; set_idle
@@ -113,11 +97,8 @@ render() {        # $1 = json, $2 = age of that json in seconds
 
   elapsed="$(printf '%s' "$json" | jq -r '.elapsed_minutes // 0')"
   # A running clock keeps running: age the cached figure forward so a served
-  # cache never shows a stale number. The name comes from the board (matched by
-  # service id, which the timer carries), so it is the same string the panel shows.
-  svc="$(printf '%s' "$json" | jq -r '.service_id // empty')"
-  bname="$(jq -r --arg s "$svc" '[.bookings[]? | select(.service_id == $s)][0].name // empty' "$BOARD" 2>/dev/null)"
-  STATE=running; set_running "$(fmt $(( ${elapsed:-0} + age / 60 )))" "$bname"
+  # cache never shows a stale number.
+  STATE=running; set_running "$(fmt $(( ${elapsed:-0} + age / 60 )))"
 }
 
 STATE=unknown

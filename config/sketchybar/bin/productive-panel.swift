@@ -253,10 +253,10 @@ final class RowView: NSView {
         toolTip = (running ? "Timing now, \(fmtHM(elapsed))\n" : "") + "\(b.project) · \(b.budget)\n"
             + "Tracked \(fmtHM(b.tracked))" + (b.booked.map { " of \(fmtHM($0)) booked (\($0 > 0 ? b.tracked * 100 / $0 : 0)%)" } ?? "")
         play.isBordered = false; play.imagePosition = .imageOnly; play.target = self; play.action = #selector(go)
-        play.image = NSImage(systemSymbolName: running ? "stop.fill" : "play.fill", accessibilityDescription: running ? "Timing" : "Start")?
+        play.image = NSImage(systemSymbolName: running ? "stop.fill" : "play.fill", accessibilityDescription: running ? "Stop" : "Start")?
             .withSymbolConfiguration(.init(pointSize: 9, weight: .bold))
         play.contentTintColor = running ? onGreen : fg
-        play.toolTip = running ? "Already timing" : "Start timing \(b.code)"
+        play.toolTip = running ? "Stop timing" : "Start timing \(b.code)"
         play.alphaValue = running ? 1 : 0.55
         play.frame = NSRect(x: frame.width - 28, y: (frame.height - 22) / 2, width: 22, height: 22)
         addSubview(play)
@@ -757,12 +757,10 @@ final class Controller: NSObject, NSWindowDelegate {
     }
 
     func switchTo(_ b: Booking) {
-        // Clicking the booking already running is a no-op in the script too, so
-        // there is nothing to wait for or to close on.
-        if board.runningKey == b.key { return }
+        // Clicking the booking already running is its stop button.
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/bash")
-        p.arguments = [configDir + "/plugins/productive_switch.sh", b.serviceId]
+        p.arguments = [configDir + "/plugins/productive_switch.sh", board.runningKey == b.key ? "--stop" : b.serviceId]
         var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
         p.standardInput = FileHandle.nullDevice; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
         try? p.run()
