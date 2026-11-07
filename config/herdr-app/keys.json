@@ -58,7 +58,8 @@
     "ctrl-8": "space.select:8",
     "ctrl-9": "space.select:9",
     "cmd-shift-f": "mod.open:nvim-find",
-    "cmd-shift-r": "layout.toggle:panel"
+    "cmd-shift-r": "layout.toggle:panel",
+    "cmd-alt-p": "mod.open:productive-timer"
   },
   "terminal": {
     "cmd-c": "terminal.copy",
