@@ -104,6 +104,7 @@ export default class ProductiveTimer extends View {
     this.upBusy = false;
     this.weekOffset = 0;        // 0 this week, -1 last week, +1 next; the panel's < > switcher
     this.navBusy = false;       // a week jump is fetching its board
+    this.pw = 0;                // the panel's own width (on_size_change): the breakpoint, not the window's
     cx.timer.every(POLL_MS, (cx) => { this.load(cx); this.loadUp(cx); });
     cx.spawn((cx) => { this.load(cx); this.loadUp(cx); });
   }
@@ -360,7 +361,8 @@ export default class ProductiveTimer extends View {
     const b = this.board;
     const st = this.state();
     const green = t.ansi2, red = t.ansi1, amber = t.ansi3;
-    const body = v_flex().id("panel").size_full().overflow_hidden().p(16).gap(12).text_size(12).bg(t.background).text_color(t.foreground);
+    const body = v_flex().id("panel").size_full().overflow_hidden().p(16).gap(12).text_size(12).bg(t.background).text_color(t.foreground)
+      .on_size_change((sz, cx) => { if (sz.width !== this.pw) { this.pw = sz.width; cx.notify(); } });
     if (this.navBusy || !b || !b.bookings || !b.days) { // loading a week, or a board without days (days.filter below would throw)
       const msg = this.navBusy ? `Loading week ${(b?.week || weekId(this.weekOffset)).split("W")[1] ?? ""}…`
         : (b ? "No bookings this week" : "No timer data yet. The sketchybar board has not been written.");
@@ -502,11 +504,12 @@ export default class ProductiveTimer extends View {
     const focus = this.renderFocus(t);
 
     // 1 column by default; split the Focus checklists into a second column once the panel is wide enough.
-    let vw = 0; try { vw = window.viewport_size().width; } catch (_e) { /* no window: assume narrow */ }
-    if (vw >= TWO_COL_MIN) {
-      return body.child(header).child(h_flex().flex_1().min_h(0).gap(16)
+    // The panel's width, not the window's: docked, the window is always wide. items_start, since h_flex
+    // centres and the Focus column would collapse to zero height.
+    if (this.pw >= TWO_COL_MIN) {
+      return body.child(header).child(h_flex().items_start().flex_1().min_h(0).gap(16)
         .child(v_flex().flex_1().min_w(0).gap(12).child(rowsBlock).child(weekBlock).child(daysBlock))
-        .child(v_flex().w(300).flex_none().min_h(0).child(focus)));
+        .child(v_flex().w(300).flex_none().h_full().min_h(0).child(focus)));
     }
     return body.child(header).child(rowsBlock).child(weekBlock).child(daysBlock).child(focus);
   }
