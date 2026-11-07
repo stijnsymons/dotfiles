@@ -788,16 +788,15 @@ final class Controller: NSObject, NSWindowDelegate {
 // the right. Only the two chevrons are hit targets; the title between them is inert.
 final class NavHeaderView: NSView {
     override var isFlipped: Bool { true }
-    let title: String, status: String, titleW: CGFloat, onPrev: () -> Void, onNext: () -> Void
+    let title: String, status: String, onPrev: () -> Void, onNext: () -> Void
     var prevR = NSRect.zero, nextR = NSRect.zero
     var hover = 0 { didSet { if oldValue != hover { needsDisplay = true } } }   // 0 none, 1 prev, 2 next
     static let arrow = NSFont.systemFont(ofSize: 15, weight: .medium)
     init(frame: NSRect, title: String, status: String, onPrev: @escaping () -> Void, onNext: @escaping () -> Void) {
         self.title = title; self.status = status; self.onPrev = onPrev; self.onNext = onNext
-        titleW = (title.uppercased() as NSString).size(withAttributes: [.font: capsFont, .kern: 0.8]).width + 6
         super.init(frame: frame)
         prevR = NSRect(x: 0, y: -3, width: 16, height: 20)
-        nextR = NSRect(x: 20 + titleW + 4, y: -3, width: 16, height: 20)
+        nextR = NSRect(x: 18, y: -3, width: 16, height: 20)   // both chevrons on the left, before the title
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -807,8 +806,8 @@ final class NavHeaderView: NSView {
     override func mouseDown(with e: NSEvent) { let h = hit(e); if h == 1 { onPrev() } else if h == 2 { onNext() } }
     override func draw(_ r: NSRect) {
         text("‹", Self.arrow, hover == 1 ? fg : dim, in: prevR.offsetBy(dx: 0, dy: 1), align: .center)
-        text(title.uppercased(), capsFont, dim, in: NSRect(x: 20, y: 1, width: titleW, height: 14), kern: 0.8)
         text("›", Self.arrow, hover == 2 ? fg : dim, in: nextR.offsetBy(dx: 0, dy: 1), align: .center)
+        text(title.uppercased(), capsFont, dim, in: NSRect(x: 40, y: 1, width: bounds.width - 160, height: 14), kern: 0.8)
         text(status, capsFont, faint, in: NSRect(x: bounds.width - 120, y: 1, width: 120, height: 14), align: .right, kern: 0.8)
     }
 }

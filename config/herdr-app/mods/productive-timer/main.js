@@ -341,8 +341,8 @@ export default class ProductiveTimer extends View {
     return h_flex().justify_between().items_center().text_size(11).text_color(t.dim)
       .child(h_flex().gap(2).items_center()
         .child(arrow("‹", -1))
-        .child(div().child(`WEEK ${no}${range ? ` · ${range}` : ""}`.toUpperCase()))
-        .child(arrow("›", 1)))
+        .child(arrow("›", 1))
+        .child(div().ml(4).child(`WEEK ${no}${range ? ` · ${range}` : ""}`.toUpperCase())))
       .child(div().child(status));
   }
 
