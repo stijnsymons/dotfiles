@@ -506,8 +506,7 @@ export default class ProductiveTimer extends View {
       const foot = v_flex().absolute().bottom(0).left(0).right(0).items_center().text_size(10).text_color(isToday ? green : t.dim)
         .child(div().text_size(10.5).font_bold().text_color(isToday ? green : t.foreground).child(tracked ? fmt(tracked) : "–"))
         .child(div().child(d.dow));
-      // Capped at the native panel's column (52px, a 40px bar): a wide panel leaves room, it does not fatten the bars.
-      const col = div().id(`day-${d.dow}`).relative().h_full().flex_1().max_w(52).child(foot);
+      const col = div().id(`day-${d.dow}`).relative().h_full().flex_1().child(foot);
       if (!d.start || !d.end) return col; // end can be null with start set: hm(null) would throw
       const s = hm(d.start), e = hm(d.end);
       const present = Math.round((e - s) * 60);
@@ -530,7 +529,9 @@ export default class ProductiveTimer extends View {
       return [`${hd.dow} ${dt.getDate()} ${MONTHS[dt.getMonth()]} · ${hd.start}–${hd.end}`,
         `${fmtTotal(tr)} tracked of ${fmtTotal(pr)} present${pr > tr ? ` · ${fmtTotal(pr - tr)} untracked` : ""}${split ? ` · ${split}` : ""}`];
     })());
-    const days = h_flex().relative().h(COL).mt(4)
+    // Capped at the native panel's width (axis + 7 x 52px columns, 40px bars): a wide panel leaves
+    // room beside the chart, it does not fatten the bars or stretch the hour lines.
+    const days = h_flex().relative().h(COL).mt(4).max_w(40 + 7 * 52)
       .children(ticks.map((h) => div().absolute().top(y(h)).left(40).right(0).h(1).bg(tint(t.border, 0.5))))
       .child(div().relative().w(34).h_full().mr(6).flex_none()
         .children(ticks.map((h) => div().absolute().top(y(h) - 6).right(0).text_size(9.5).text_color(t.dim).child(`${pad(h)}:00`))))
