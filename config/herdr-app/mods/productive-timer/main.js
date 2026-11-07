@@ -506,7 +506,8 @@ export default class ProductiveTimer extends View {
       const foot = v_flex().absolute().bottom(0).left(0).right(0).items_center().text_size(10).text_color(isToday ? green : t.dim)
         .child(div().text_size(10.5).font_bold().text_color(isToday ? green : t.foreground).child(tracked ? fmt(tracked) : "–"))
         .child(div().child(d.dow));
-      const col = div().id(`day-${d.dow}`).relative().h_full().flex_1().child(foot);
+      // Capped at the native panel's column (52px, a 40px bar): a wide panel leaves room, it does not fatten the bars.
+      const col = div().id(`day-${d.dow}`).relative().h_full().flex_1().max_w(52).child(foot);
       if (!d.start || !d.end) return col; // end can be null with start set: hm(null) would throw
       const s = hm(d.start), e = hm(d.end);
       const present = Math.round((e - s) * 60);
