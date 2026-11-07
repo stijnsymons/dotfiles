@@ -78,7 +78,8 @@ export default class ProductiveTimer extends View {
   init(_props, cx) {
     this.board = null;
     this.busy = null;           // service_id being switched: its chip pulses until the board says otherwise
-    this.panel = Boolean(props()?.overlay);
+    // props.panel: docked in the right-hand panel (layouts/stijn.json), opened by my-tabs' Timer button.
+    this.panel = Boolean(props()?.overlay || props()?.panel);
     this.hovChip = null;        // chip key under the pointer: its detail popup is open
     this.hovBar = null;         // booking key under the pointer in the week bar
     this.hovDay = null;         // day date under the pointer in the day columns

@@ -41,7 +41,7 @@ WEEK="$(date +%G-W%V)"
 # the first quarter of an hour of the new week quoting the old one's total.
 if [ -s "$CACHE" ] && [ "$(( $(date +%s) - $(stat -f %m "$CACHE") ))" -lt "$TTL" ] \
    && [ "$(jq -r '.week // ""' "$CACHE" 2>/dev/null)" = "$WEEK" ] \
-   && jq -e 'has("booked_by_service")' "$CACHE" >/dev/null 2>&1; then
+   && jq -e 'has("booked_by_service") and (.booked_by_service | has("") | not)' "$CACHE" >/dev/null 2>&1; then
   exit 0
 fi
 
@@ -58,7 +58,10 @@ case "$ME" in
 esac
 
 BOOKINGS="$(productive_api GET \
-  "bookings?filter%5Bperson_id%5D=${ME}&filter%5Bafter%5D=${MON}&filter%5Bbefore%5D=${SUN}&page%5Bsize%5D=200")"
+  "bookings?filter%5Bperson_id%5D=${ME}&filter%5Bafter%5D=${MON}&filter%5Bbefore%5D=${SUN}&include=service&page%5Bsize%5D=200")"
+# include=service is what puts relationships.service.data.id on each booking;
+# without it the id is absent, every booking keys under "" and the board's
+# per-booking planned hours all come out null.
 printf '%s' "$BOOKINGS" | jq -e '.data' >/dev/null 2>&1 || exit 0
 
 # jq's gmtime puts the weekday at index 6, 0 = Sunday, so 1..5 is Mon-Fri.
