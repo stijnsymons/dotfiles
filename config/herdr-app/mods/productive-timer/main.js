@@ -30,6 +30,11 @@ const SWITCH = `${home()}/dotfiles/config/sketchybar/plugins/productive_switch.s
 const UPCOMING = `${home()}/dotfiles/config/sketchybar/plugins/focus_upcoming.sh`;
 const BOARD = `${home()}/.cache/sketchybar/productive-board.json`;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// The Focus-note checklist sections, each [heading title (matches the note), display label].
+// focus_upcoming.sh lists and toggles one section at a time; the three together are the panel's
+// right-hand column (always on the bar, only when wide enough in herdr).
+const SECTIONS = [["Upcoming", "UPCOMING"], ["Actions", "ACTIONS"], ["Past actions", "PAST ACTIONS"]];
+const TWO_COL_MIN = 640;        // panel viewport width at/above which the Focus column moves beside the timer
 
 // colors.sh, spelled the way the theme keys are used below (chrome = bar, popover = popup).
 const TN = {
@@ -83,7 +88,7 @@ export default class ProductiveTimer extends View {
     this.hovChip = null;        // chip key under the pointer: its detail popup is open
     this.hovBar = null;         // booking key under the pointer in the week bar
     this.hovDay = null;         // day date under the pointer in the day columns
-    this.up = null;             // focus_upcoming.sh listing; only the panel shows it
+    this.foc = {};              // section title -> focus_upcoming.sh listing; only the panel shows these
     this.upBusy = false;
     cx.timer.every(POLL_MS, (cx) => { this.load(cx); this.loadUp(cx); });
     cx.spawn((cx) => { this.load(cx); this.loadUp(cx); });
@@ -99,27 +104,34 @@ export default class ProductiveTimer extends View {
     cx.notify();
   }
 
-  // The script always exits 0 with JSON; anything else is "unknown", kept as the last listing.
+  // One section's listing. The script always exits 0 with JSON; anything else is "unknown",
+  // kept as the last listing so a transient failure does not blank the column.
+  async loadSection(section, cx) {
+    try {
+      const r = await exec("bash", [UPCOMING, section]);
+      this.foc[section] = JSON.parse(r.stdout);
+    } catch (_e) { /* keep the last listing */ }
+    if (cx) cx.notify();
+  }
+
+  // All three Focus sections, in parallel. Only the panel shows them.
   async loadUp(cx) {
     if (!this.panel) return;
-    try {
-      const r = await exec("bash", [UPCOMING]);
-      this.up = JSON.parse(r.stdout);
-    } catch (_e) { /* keep the last listing */ }
+    await Promise.all(SECTIONS.map(([s]) => this.loadSection(s, null)));
     cx.notify();
   }
 
-  // Tick: flip optimistically, let the script decide, then re-list (line numbers may have shifted).
-  toggleUp(it, cx) {
+  // Tick: flip optimistically, let the script decide, then re-list that section (line numbers may have shifted).
+  toggleUp(section, it, cx) {
     if (this.upBusy) return;
     this.upBusy = true;
     it.checked = !it.checked;
     cx.notify();
     cx.spawn(async (cx) => {
       let r;
-      try { r = await exec("bash", [UPCOMING, "toggle", String(it.line), it.raw]); } catch (e) { r = { code: 1, stderr: String(e) }; }
+      try { r = await exec("bash", [UPCOMING, "toggle", String(it.line), it.raw, section]); } catch (e) { r = { code: 1, stderr: String(e) }; }
       if (r.code !== 0) notify({ title: "Could not tick the Focus item", body: (r.stderr || "The note changed under it. Reloaded.").trim().split("\n").pop(), level: "warning" });
-      await this.loadUp(cx);
+      await this.loadSection(section, cx);
       this.upBusy = false;
     });
   }
@@ -246,25 +258,39 @@ export default class ProductiveTimer extends View {
 
   // ---------------------------------------------------------------- panel
 
-  // Focus "Upcoming": the checklist of this week's note. Clicking a box ticks it in the Markdown file.
-  renderUpcoming(t) {
-    const u = this.up;
+  // One Focus-note checklist section (Upcoming / Actions / Past actions). Clicking a box ticks it in
+  // the Markdown file. flex_none with no own scrollbar: the Focus column (renderFocus) scrolls as one.
+  renderSection(t, section, label) {
+    const sk = section.replace(/\s+/g, "-").toLowerCase();
+    const u = this.foc[section];
     const wk = u?.week?.split("-")[1] ?? "";
     const items = u?.items ?? [];
     const done = items.filter((i) => i.checked).length;
+    const empty = section === "Upcoming" ? "Nothing upcoming" : `No ${label.toLowerCase()}`;
     const list = !u ? [div().text_color(t.dim).child("Loading…")]
       : u.missing ? [div().text_color(t.dim).child(`No Focus note for ${wk}`)]
-      : items.length === 0 ? [div().text_color(t.dim).child("Nothing upcoming")]
-      : items.map((it) => h_flex().id(`up-${it.line}`).gap(8).items_start().py(3).px(4).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover))
-        .on_click((_e, cx) => this.toggleUp(it, cx))
+      : items.length === 0 ? [div().text_color(t.dim).child(empty)]
+      : items.map((it) => h_flex().id(`${sk}-${it.line}`).gap(8).items_start().py(3).px(4).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => this.toggleUp(section, it, cx))
         .child(h_flex().size(14).mt(1).flex_none().rounded(3).border(1).border_color(it.checked ? t.ansi2 : t.input).bg(it.checked ? t.ansi2 : "#00000000").items_center().justify_center()
           .text_size(10).font_bold().text_color(t.background).child(it.checked ? "✓" : ""))
         .child(div().flex_1().min_w(0).text_size(11.5).text_color(it.checked ? t.dim : t.foreground).when(it.checked, (e) => e.line_through()).child(it.text)));
-    return v_flex().gap(6).flex_1().min_h(0)
+    return v_flex().gap(4).flex_none()
       .child(h_flex().justify_between().text_size(10.5).text_color(t.dim)
-        .child(div().child("UPCOMING"))
-        .child(div().child(u && !u.missing && items.length ? `${done}/${items.length} · Focus ${wk}` : `Focus ${wk}`)))
-      .child(v_flex().id("upcoming").flex_1().min_h(100).overflow_y_scrollbar().gap(1).children(list));
+        .child(div().child(label))
+        .child(div().child(items.length ? `${done}/${items.length}` : "")))
+      .child(v_flex().id(`sec-${sk}`).gap(1).children(list));
+  }
+
+  // The three checklist sections under one FOCUS heading. Scrolls as a whole so a long Past-actions
+  // list never pushes the rest of the panel; the caller places it below the timer or beside it.
+  renderFocus(t) {
+    const wk = (SECTIONS.map(([s]) => this.foc[s]).find((u) => u?.week)?.week ?? "").split("-")[1] ?? "";
+    return v_flex().id("focus").gap(12).flex_1().min_h(0).overflow_y_scrollbar()
+      .child(h_flex().justify_between().text_size(11).text_color(t.dim)
+        .child(div().child("FOCUS"))
+        .child(div().child(wk)))
+      .children(SECTIONS.map(([s, l]) => this.renderSection(t, s, l)));
   }
 
   renderPanel() {
@@ -396,22 +422,30 @@ export default class ProductiveTimer extends View {
         .children(ticks.map((h) => div().absolute().top(y(h) - 6).right(0).text_size(9.5).text_color(t.dim).child(`${pad(h)}:00`))))
       .children(cols);
 
-    return body
-      .child(h_flex().justify_between().text_size(11).text_color(t.dim)
-        .child(div().child(`WEEK ${(b.week || "").split("W")[1] ?? ""} · ${range}`.toUpperCase()))
-        .child(div().child(st === "unknown" ? "NO LIVE DATA" : "PRODUCTIVE")))
-      .child(v_flex().id("rows").gap(2).max_h(170).flex_none().overflow_y_scrollbar().children(rows))
-      .child(v_flex().gap(8)
-        .child(label("This week", h_flex().gap(4)
-          .child(div().font_semibold().text_color(t.foreground).child(fmtTotal(total)))
-          .child(div().child(`/ ${Math.round(target / 60)}h`))
-          .when(over > 0, (e) => e.child(div().text_color(red).child(`+${Math.round(over / 60)}h over`)))))
-        .child(bar)
-        .child(barDetail))
-      .child(v_flex().gap(4).mt(6)
-        .child(label("Per day", div().child("first → last activity")))
-        .child(days)
-        .child(dayDetail))
-      .child(this.renderUpcoming(t));
+    const header = h_flex().justify_between().text_size(11).text_color(t.dim)
+      .child(div().child(`WEEK ${(b.week || "").split("W")[1] ?? ""} · ${range}`.toUpperCase()))
+      .child(div().child(st === "unknown" ? "NO LIVE DATA" : "PRODUCTIVE"));
+    const rowsBlock = v_flex().id("rows").gap(2).max_h(170).flex_none().overflow_y_scrollbar().children(rows);
+    const weekBlock = v_flex().gap(8)
+      .child(label("This week", h_flex().gap(4)
+        .child(div().font_semibold().text_color(t.foreground).child(fmtTotal(total)))
+        .child(div().child(`/ ${Math.round(target / 60)}h`))
+        .when(over > 0, (e) => e.child(div().text_color(red).child(`+${Math.round(over / 60)}h over`)))))
+      .child(bar)
+      .child(barDetail);
+    const daysBlock = v_flex().gap(4).mt(6)
+      .child(label("Per day", div().child("first → last activity")))
+      .child(days)
+      .child(dayDetail);
+    const focus = this.renderFocus(t);
+
+    // 1 column by default; split the Focus checklists into a second column once the panel is wide enough.
+    let vw = 0; try { vw = window.viewport_size().width; } catch (_e) { /* no window: assume narrow */ }
+    if (vw >= TWO_COL_MIN) {
+      return body.child(header).child(h_flex().flex_1().min_h(0).gap(16)
+        .child(v_flex().flex_1().min_w(0).gap(12).child(rowsBlock).child(weekBlock).child(daysBlock))
+        .child(v_flex().w(300).flex_none().min_h(0).child(focus)));
+    }
+    return body.child(header).child(rowsBlock).child(weekBlock).child(daysBlock).child(focus);
   }
 }

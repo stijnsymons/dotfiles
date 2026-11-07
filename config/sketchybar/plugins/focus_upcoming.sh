@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
-# The Focus layer of the Productive timer widget: the "## Upcoming" checklist of
-# this ISO week's Focus note in Obsidian, shared by the sketchybar panel and the
-# herdr.app mod so both show (and tick) the same lines.
+# The Focus layer of the Productive timer widget: a checklist section of this ISO
+# week's Focus note in Obsidian, shared by the sketchybar panel and the herdr.app
+# mod so both show (and tick) the same lines. The section defaults to "## Upcoming"
+# but any heading works, so the same engine drives "Upcoming", "Actions" and
+# "Past actions" (the renderers call it once per section).
 #
-#   focus_upcoming.sh                     print {week,path,missing,items:[{line,checked,text,raw}]}
-#   focus_upcoming.sh toggle <line> <raw> flip [ ] <-> [x] on that item, print the new state
+#   focus_upcoming.sh [section]                     print {week,path,section,missing,items:[{line,checked,text,raw}]}
+#   focus_upcoming.sh toggle <line> <raw> [section] flip [ ] <-> [x] on that item, print the new state
 #
+#   section  heading title (default "Upcoming"), matched at any level, case-insensitive
 #   line     1-based file line number (what the UI got from the listing)
 #   raw      the line exactly as listed, minus the line ending; also the staleness check
 #   missing  null | "note" | "section" - UI shows "No Focus note for <week>" when set
 #
-# Seams: FOCUS_NOTE=<file> (test a fixture), FOCUS_WEEK=<YYYY-Www>, FOCUS_DIR.
+# Seams: FOCUS_NOTE=<file> (test a fixture), FOCUS_WEEK=<YYYY-Www>, FOCUS_DIR,
+# FOCUS_SECTION=<title> (default for the section when no positional one is given).
 #
 # The note lives on Google Drive and Obsidian edits it at the same time as we do,
 # so a click carries the line's text, not just its number: the toggle only writes
@@ -19,8 +23,8 @@
 # The write is a temp file in the same dir + mv, so Drive never syncs a half file,
 # and perl works on bytes so a CRLF note or a missing final newline survives.
 #
-# Items are "- [ ]", "+ [ ]" (and "* [ ]") lines under "## Upcoming" up to the next
-# heading. Exit codes of toggle: 0 toggled, 1 stale/ambiguous/missing, 2 usage.
+# Items are "- [ ]", "+ [ ]" (and "* [ ]") lines under the section heading up to the
+# next heading. Exit codes of toggle: 0 toggled, 1 stale/ambiguous/missing, 2 usage.
 
 set -u
 WEEK="${FOCUS_WEEK:-$(date +%G-W%V)}"
@@ -28,28 +32,29 @@ DIR="${FOCUS_DIR:-$HOME/Library/CloudStorage/GoogleDrive-ssymons@gmail.com/My Dr
 NOTE="${FOCUS_NOTE:-$DIR/$WEEK.md}"
 
 # Shared by both halves: the section walk. Prints "<line>\t<raw>" per item;
-# raw has no \r. Exit 3 when there is no Upcoming heading.
+# raw has no \r. Exit 3 when there is no heading matching $SEC.
 items() {
-  perl -ne '
+  SEC="$SECTION" perl -ne '
     s/\r?\n\z//;
-    if (/^##\s+Upcoming\s*$/) { $in = 1; $seen = 1; next }
+    if (/^#{1,6}\s+\Q$ENV{SEC}\E\s*$/i) { $in = 1; $seen = 1; next }
     if ($in && /^#{1,6}\s/) { $in = 0 }   # a heading, not a "#tag" line
     print "$.\t$_\n" if $in && /^[-+*] \[[ xX]\] /;
     END { exit($seen ? 0 : 3) }' "$NOTE"
 }
 
 if [ "${1:-}" = toggle ]; then
-  [ $# -eq 3 ] || { echo "usage: $0 toggle <line> <raw>" >&2; exit 2; }
+  { [ $# -eq 3 ] || [ $# -eq 4 ]; } || { echo "usage: $0 toggle <line> <raw> [section]" >&2; exit 2; }
+  SECTION="${4:-${FOCUS_SECTION:-Upcoming}}"
   [ -f "$NOTE" ] || exit 1
   TMP="$(mktemp "$NOTE.XXXXXX")" || exit 1
   # Candidates are items whose raw equals the one clicked; the clicked line wins
   # if it is one, else a single candidate, else nothing is written.
-  if OUT="$(LINE="$2" RAW="$3" perl -e '
+  if OUT="$(LINE="$2" RAW="$3" SEC="$SECTION" perl -e '
       undef $/; open my $f, "<:raw", $ARGV[0] or exit 1; my $t = <$f>; close $f;
       my @l = split /(?<=\n)/, $t; my ($in, @c);
       for my $i (0 .. $#l) {
         (my $s = $l[$i]) =~ s/\r?\n\z//;
-        if ($s =~ /^##\s+Upcoming\s*$/) { $in = 1; next }
+        if ($s =~ /^#{1,6}\s+\Q$ENV{SEC}\E\s*$/i) { $in = 1; next }
         $in = 0 if $in && $s =~ /^#{1,6}\s/;
         push @c, $i if $in && $s =~ /^[-+*] \[[ xX]\] / && $s eq $ENV{RAW};
       }
@@ -68,13 +73,14 @@ if [ "${1:-}" = toggle ]; then
   rm -f "$TMP"; exit 1
 fi
 
+SECTION="${1:-${FOCUS_SECTION:-Upcoming}}"
 if [ ! -f "$NOTE" ]; then
-  jq -n --arg w "$WEEK" --arg p "$NOTE" '{week:$w,path:$p,missing:"note",items:[]}'; exit 0
+  jq -n --arg w "$WEEK" --arg p "$NOTE" --arg s "$SECTION" '{week:$w,path:$p,section:$s,missing:"note",items:[]}'; exit 0
 fi
 MISSING=null
 ITEMS="$(items)" || MISSING='"section"'
 # raw -> checked + display text: marker dropped, [[a|b]] -> b, [[a]] -> a, **x** -> x.
-printf '%s' "$ITEMS" | jq -Rn --arg w "$WEEK" --arg p "$NOTE" --argjson m "$MISSING" '
-  {week:$w, path:$p, missing:$m, items:[inputs | select(length>0) | capture("^(?<line>[0-9]+)\t(?<raw>.*)$")
+printf '%s' "$ITEMS" | jq -Rn --arg w "$WEEK" --arg p "$NOTE" --arg s "$SECTION" --argjson m "$MISSING" '
+  {week:$w, path:$p, section:$s, missing:$m, items:[inputs | select(length>0) | capture("^(?<line>[0-9]+)\t(?<raw>.*)$")
     | {line:(.line|tonumber), checked:(.raw|test("^. \\[[xX]\\]")), raw,
        text:(.raw | sub("^[-+*] \\[.\\] +";"") | gsub("\\[\\[(?<t>[^\\]|]*\\|)?(?<a>[^\\]]*)\\]\\]";.a) | gsub("\\*\\*(?<b>.*?)\\*\\*";.b))}]}'

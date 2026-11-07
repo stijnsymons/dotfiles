@@ -449,15 +449,17 @@ final class DaysView: HoverView {
     }
 }
 
-// --- the Focus note's Upcoming checklist ------------------------------------
-// One view for the whole section: rows are text, so hit-testing by y is simpler
-// than a view per line. A click ticks the line in the note (through
-// focus_upcoming.sh, which owns the Markdown) and the controller reloads.
+// --- the Focus note's checklist sections ------------------------------------
+// One view per section (Upcoming / Actions / Past actions), stacked in the right-hand
+// column. Rows are text, so hit-testing by y is simpler than a view per line. A click
+// ticks the line in the note (through focus_upcoming.sh, which owns the Markdown) and
+// the controller reloads. Each [heading title (matches the note), display label].
+let FOCUS_SECTIONS: [(key: String, label: String)] = [("Upcoming", "UPCOMING"), ("Actions", "ACTIONS"), ("Past actions", "PAST ACTIONS")]
 struct FocusItem { let line: Int; let checked: Bool; let text, raw: String }
 struct Focus { var week = "", path = ""; var missing: String? = "note"; var items: [FocusItem] = [] }
-func loadFocus() -> Focus {
+func loadFocus(_ section: String = "Upcoming") -> Focus {
     let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
-    p.arguments = [configDir + "/plugins/focus_upcoming.sh"]
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh", section]
     var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
     let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
     guard (try? p.run()) != nil else { return Focus() }
@@ -471,9 +473,9 @@ func loadFocus() -> Focus {
     return f
 }
 /// Runs the toggle and waits (it is a temp file and a rename, a few ms); the caller reloads.
-func toggleFocus(_ i: FocusItem) {
+func toggleFocus(_ i: FocusItem, section: String) {
     let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
-    p.arguments = [configDir + "/plugins/focus_upcoming.sh", "toggle", String(i.line), i.raw]
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh", "toggle", String(i.line), i.raw, section]
     var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
     p.standardInput = FileHandle.nullDevice; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
     try? p.run(); p.waitUntilExit()
@@ -482,7 +484,7 @@ func toggleFocus(_ i: FocusItem) {
 final class UpcomingView: NSView {
     override var isFlipped: Bool { true }
     static let font = NSFont.systemFont(ofSize: 12), textX: CGFloat = 26, headH: CGFloat = 22
-    let focus: Focus, shown: [FocusItem], more: Int, onToggle: (FocusItem) -> Void
+    let focus: Focus, label: String, shown: [FocusItem], more: Int, onToggle: (FocusItem) -> Void
     var rows: [NSRect] = []
     var hover: Int? = nil { didSet { if oldValue != hover { needsDisplay = true } } }
     /// Height of one item: its text wraps to at most two lines.
@@ -494,8 +496,8 @@ final class UpcomingView: NSView {
     static func height(of items: [FocusItem], width: CGFloat, more: Bool) -> CGFloat {
         headH + (items.isEmpty ? 24 : items.reduce(0) { $0 + rowHeight($1.text, width: width) }) + (more ? 20 : 0)
     }
-    init(_ f: Focus, shown: [FocusItem], more: Int, frame: NSRect, onToggle: @escaping (FocusItem) -> Void) {
-        focus = f; self.shown = shown; self.more = more; self.onToggle = onToggle
+    init(_ f: Focus, label: String, shown: [FocusItem], more: Int, frame: NSRect, onToggle: @escaping (FocusItem) -> Void) {
+        focus = f; self.label = label; self.shown = shown; self.more = more; self.onToggle = onToggle
         super.init(frame: frame)
         var y = Self.headH
         for i in shown { let h = Self.rowHeight(i.text, width: frame.width); rows.append(NSRect(x: 0, y: y, width: frame.width, height: h)); y += h }
@@ -508,12 +510,12 @@ final class UpcomingView: NSView {
     override func mouseDown(with e: NSEvent) { if let i = at(e) { onToggle(shown[i]) } }
     override func draw(_ r: NSRect) {
         let done = focus.items.filter { $0.checked }.count
-        text("UPCOMING", capsFont, dim, in: NSRect(x: 0, y: 0, width: 120, height: 14), kern: 0.8)
-        text(focus.missing == nil ? "\(done)/\(focus.items.count) done · \(focus.week.split(separator: "-").last.map(String.init) ?? "")" : "FOCUS NOTE",
-             capsFont, faint, in: NSRect(x: bounds.width - 160, y: 0, width: 160, height: 14), align: .right, kern: 0.8)
+        text(label, capsFont, dim, in: NSRect(x: 0, y: 0, width: 160, height: 14), kern: 0.8)
+        text(focus.missing == nil ? "\(done)/\(focus.items.count)" : "NO NOTE",
+             capsFont, faint, in: NSRect(x: bounds.width - 100, y: 0, width: 100, height: 14), align: .right, kern: 0.8)
         if focus.missing != nil || focus.items.isEmpty {
             let w = focus.week.split(separator: "-").last.map(String.init) ?? focus.week
-            text(focus.missing != nil ? "No Focus note for \(w)" : "Nothing upcoming in the \(w) note", NSFont.systemFont(ofSize: 12), faint,
+            text(focus.missing != nil ? "No Focus note for \(w)" : "Nothing in \(label.lowercased())", NSFont.systemFont(ofSize: 12), faint,
                  in: NSRect(x: 0, y: Self.headH + 2, width: bounds.width, height: 16)); return
         }
         for (n, i) in shown.enumerated() {
@@ -546,11 +548,13 @@ final class Panel: NSPanel {
 }
 
 final class Controller: NSObject, NSWindowDelegate {
-    let W: CGFloat = 468, pad: CGFloat = 16
+    let pad: CGFloat = 16, leftW: CGFloat = 436, colGap: CGFloat = 16, rightW: CGFloat = 300
+    let W: CGFloat = 16 + 436 + 16 + 300 + 16   // 784: the timer column, a gap, and the Focus column
     var panel: Panel!
     var fx: Root!
-    var board = Board(), focus = Focus()
+    var board = Board(), focus: [String: Focus] = [:]   // section title -> listing
     var mtime = Date.distantPast, focusMtime = Date.distantPast
+    var notePath: String { focus["Upcoming"]?.path ?? "" }   // all sections read the same note
     var closing = false, built = false
     var clickMonitor: Any?
 
@@ -594,23 +598,27 @@ final class Controller: NSObject, NSWindowDelegate {
     /// Rebuilds when the board or the Focus note changed on disk (a chip switch, Obsidian
     /// ticking a box). The note is listed through the script only when its mtime moved.
     func reload(force: Bool) {
-        let bm = mtimeOf(boardPath), fm = mtimeOf(focus.path)
+        let bm = mtimeOf(boardPath), fm = mtimeOf(notePath)
         let bNew = force || (bm ?? .distantPast) > mtime, fNew = force || (fm ?? .distantPast) != focusMtime   // != : the note appearing or vanishing counts too
         if !bNew && !fNew { return }
         if bNew {
             mtime = bm ?? mtime
             if let b = loadBoard() { board = b } else if !built { board = Board() } else if !fNew { return }
         }
-        if fNew { focus = loadFocus(); focusMtime = mtimeOf(focus.path) ?? .distantPast }
+        if fNew {
+            var f: [String: Focus] = [:]
+            for s in FOCUS_SECTIONS { f[s.key] = loadFocus(s.key) }
+            focus = f; focusMtime = mtimeOf(notePath) ?? .distantPast
+        }
         build()
     }
 
-    func toggle(_ i: FocusItem) { toggleFocus(i); reload(force: true) }
+    func toggle(_ i: FocusItem, section: String) { toggleFocus(i, section: section); reload(force: true) }
 
     func build() {
         built = true
         fx.subviews.forEach { $0.removeFromSuperview() }
-        let rowH: CGFloat = 30, innerW = W - 2 * pad
+        let rowH: CGFloat = 30, innerW = leftW, rightX = pad + leftW + colGap
         var y: CGFloat = 14
         let head = HeaderView(frame: NSRect(x: pad, y: y, width: innerW, height: 16)); head.title = weekTitle(board)
         fx.addSubview(head); y += 26
@@ -618,22 +626,12 @@ final class Controller: NSObject, NSWindowDelegate {
             let l = NSTextField(labelWithString: board.state == "unknown" ? "No data from Productive yet." : "No bookings this week.")
             l.textColor = dim; l.font = .systemFont(ofSize: 12); l.frame = NSRect(x: pad, y: y, width: innerW, height: 20); fx.addSubview(l); y += 28
         }
-        // A busy week can have more bookings or Focus items than the screen has room for. The
-        // fixed part (header, bar, columns) stays; the Upcoming list takes what its items need
-        // up to 45% of what is left, the booking rows get the rest (at least 3), and each tail
-        // becomes "+N more".
-        let fixed: CGFloat = 14 + 26 + 14 + WeekBar.height + 14 + DaysView.height + 16 + 14
-        let left = (NSScreen.screens.first?.visibleFrame.height ?? 800) - 8 - CGFloat(topInset) - fixed
-        var shownUp: [FocusItem] = [], upH: CGFloat = 0
-        let upBudget = max(110, left * 0.45)
-        for i in focus.items {
-            let h = UpcomingView.rowHeight(i.text, width: innerW)
-            if UpcomingView.headH + upH + h + 20 > upBudget && !shownUp.isEmpty { break }
-            shownUp.append(i); upH += h
-        }
-        let moreUp = focus.items.count - shownUp.count
-        let upTotal = UpcomingView.height(of: shownUp, width: innerW, more: moreUp > 0)
-        let maxRows = max(3, Int((left - upTotal) / (rowH + 2)))
+        // Two columns. The left (timer) keeps its fixed parts (header, week bar, day columns) and gives
+        // the booking rows the rest of the screen height, a tail becoming "+N more". The right column
+        // stacks the three Focus checklists, each trimmed to "+N more" as the shared budget runs out.
+        let avail = (NSScreen.screens.first?.visibleFrame.height ?? 800) - 8 - CGFloat(topInset)
+        let fixedLeft: CGFloat = 14 + 26 + 14 + WeekBar.height + 14 + DaysView.height + 16 + 14
+        let maxRows = max(3, Int((avail - fixedLeft) / (rowH + 2)))
         let shown = board.bookings.count > maxRows ? Array(board.bookings.prefix(maxRows - 1)) : board.bookings
         for b in shown {
             let run = board.runningKey == b.key
@@ -652,9 +650,32 @@ final class Controller: NSObject, NSWindowDelegate {
         wb.relayout(); dv.relayout()
         if let n = testHoverSeg, wb.segs.indices.contains(n) { wb.hits = wb.segs.map { $0.r }; wb.hover = n }
         if let n = testHoverDay, dv.cols.indices.contains(n) { dv.hoverCol = n }
-        let up = UpcomingView(focus, shown: shownUp, more: moreUp, frame: NSRect(x: pad, y: y, width: innerW, height: upTotal), onToggle: { [weak self] in self?.toggle($0) })
-        fx.addSubview(up); y += upTotal + 16
-        var f = panel.frame; let top = f.maxY; f.size = NSSize(width: W, height: y); f.origin.y = top - y
+        let leftBottom = y
+
+        // Right column: FOCUS header, then Upcoming / Actions / Past actions.
+        var yR: CGFloat = 14
+        var wk = ""
+        for s in FOCUS_SECTIONS where wk.isEmpty { if let f = focus[s.key], f.missing == nil { wk = f.week.split(separator: "-").last.map(String.init) ?? f.week } }
+        let fh = NSTextField(labelWithString: wk.isEmpty ? "FOCUS" : "FOCUS · \(wk)")
+        fh.textColor = dim; fh.font = capsFont; fh.frame = NSRect(x: rightX, y: yR, width: rightW, height: 14); fx.addSubview(fh); yR += 26
+        var budget = avail - 26 - 14
+        for s in FOCUS_SECTIONS {
+            let key = s.key, f = focus[key] ?? Focus()
+            var shownS: [FocusItem] = [], h: CGFloat = 0
+            for it in f.items {
+                let ih = UpcomingView.rowHeight(it.text, width: rightW)
+                if UpcomingView.headH + h + ih + 20 > budget && !shownS.isEmpty { break }
+                shownS.append(it); h += ih
+            }
+            let moreS = f.items.count - shownS.count
+            let total = UpcomingView.height(of: shownS, width: rightW, more: moreS > 0)
+            let sv = UpcomingView(f, label: s.label, shown: shownS, more: moreS,
+                                  frame: NSRect(x: rightX, y: yR, width: rightW, height: total),
+                                  onToggle: { [weak self] in self?.toggle($0, section: key) })
+            fx.addSubview(sv); yR += total + 12; budget -= total + 12
+        }
+        let H = max(leftBottom, yR) + 4
+        var f = panel.frame; let top = f.maxY; f.size = NSSize(width: W, height: H); f.origin.y = top - H
         panel.setFrame(f, display: true)
         fx.frame = NSRect(origin: .zero, size: f.size)
     }
@@ -713,7 +734,7 @@ if let out = shotPath {
     // Test seam: render the content to a PNG and quit, so the drawing can be
     // inspected without a screen grab permission.
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-        if let n = testToggle, controller.focus.items.indices.contains(n) { controller.toggle(controller.focus.items[n]) }
+        if let n = testToggle, let up = controller.focus["Upcoming"], up.items.indices.contains(n) { controller.toggle(up.items[n], section: "Upcoming") }
         let v = controller.fx!
         if let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
             v.cacheDisplay(in: v.bounds, to: rep)
