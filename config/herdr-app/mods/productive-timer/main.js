@@ -21,7 +21,7 @@
 // planned hours + a pie per row (amber ring for the excess), and the Focus "Upcoming"
 // checklist (focus_upcoming.sh lists and toggles; this mod never touches the note itself).
 import { View, div, PathBuilder, Background } from "gpui-kit";
-import { h_flex, v_flex, Popup } from "gpui-base";
+import { h_flex, v_flex, Popup, InputState, Input } from "gpui-base";
 import { exec, readTextFile, home, props, run, notify } from "herdr";
 
 const POLL_MS = 30000;          // the board is rebuilt every 60s upstream; no point reading faster
@@ -52,7 +52,7 @@ const TWO_COL_MIN = 640;        // panel viewport width at/above which the Focus
 const TN = {
   background: "#1f2335", chrome: "#1a1b26", popover: "#1f2335", surface: "#292e42", hover: "#33395b",
   border: "#3b4261", input: "#3b4261", foreground: "#c0caf5", muted: "#737aa2", dim: "#565f89",
-  ansi1: "#f7768e", ansi2: "#9ece6a", ansi3: "#e0af68",
+  ansi1: "#f7768e", ansi2: "#9ece6a", ansi3: "#e0af68", accent: "#7aa2f7",
 };
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -105,6 +105,12 @@ export default class ProductiveTimer extends View {
     this.weekOffset = 0;        // 0 this week, -1 last week, +1 next; the panel's < > switcher
     this.navBusy = false;       // a week jump is fetching its board
     this.pw = 0;                // the panel's own width (on_size_change): the breakpoint, not the window's
+    this.editing = null;        // {section, it}: the Focus item the pencil opened
+    if (this.panel) {
+      this.editIn = InputState.new({});
+      this.editIn.on("submit", (_e, cx) => this.saveEdit(cx));
+      this.editIn.on("blur", (_e, cx) => { if (this.editing) { this.editing = null; cx.notify(); } });
+    }
     cx.timer.every(POLL_MS, (cx) => { this.load(cx); this.loadUp(cx); });
     cx.spawn((cx) => { this.load(cx); this.loadUp(cx); });
   }
@@ -166,6 +172,32 @@ export default class ProductiveTimer extends View {
       if (r.code !== 0) notify({ title: "Could not tick the Focus item", body: (r.stderr || "The note changed under it. Reloaded.").trim().split("\n").pop(), level: "warning" });
       await this.loadSection(section, cx);
       this.upBusy = false;
+    });
+  }
+
+  // Pencil: edit the item's Markdown (wikilinks and all, without the checkbox) in place.
+  startEdit(section, it, cx) {
+    this.editing = { section, it };
+    this.editIn.set_value(it.raw.replace(/^[-+*] \[.\] +/, ""));
+    this.editIn.focus();
+    cx.notify();
+  }
+
+  // Enter: write the line back through the script, which refuses if the note changed under it.
+  saveEdit(cx) {
+    const e = this.editing;
+    if (!e) return;
+    this.editing = null;
+    const text = this.editIn.value().trim();
+    const next = e.it.raw.match(/^[-+*] \[.\] +/)[0] + text;
+    if (!text || next === e.it.raw) { cx.notify(); return; }
+    e.it.text = text;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      let r;
+      try { r = await exec("bash", [UPCOMING, "edit", String(e.it.line), e.it.raw, next, e.section, weekId(this.weekOffset)]); } catch (err) { r = { code: 1, stderr: String(err) }; }
+      if (r.code !== 0) notify({ title: "Could not edit the Focus item", body: (r.stderr || "The note changed under it. Reloaded.").trim().split("\n").pop(), level: "warning" });
+      await this.loadSection(e.section, cx);
     });
   }
 
@@ -265,7 +297,7 @@ export default class ProductiveTimer extends View {
       let el = h_flex().id(`chip-${c.key}`).relative().h(22).pl(11).pr(8).gap(4).items_center().rounded(4).cursor_pointer().text_size(11.5).font_bold()
         .bg(on ? green : t.surface).text_color(on ? t.background : t.foreground)
         .hover((s) => s.bg(on ? green : t.hover))
-        .on_click((_e, cx) => this.switchTo(c, cx))
+        .on_click((_e, cx) => (on ? open() : this.switchTo(c, cx))) // the running chip has nothing to switch to: open the panel
         .on_hover((hov, cx) => { this.hovChip = hov ? c.key : (this.hovChip === c.key ? null : this.hovChip); cx.notify(); })
         .child(div().absolute().left(0).top(3).bottom(3).w(3).rounded(2).bg(on ? tint(t.background, 0.5) : c.color))
         .child(c.code)
@@ -301,7 +333,7 @@ export default class ProductiveTimer extends View {
   // ---------------------------------------------------------------- panel
 
   // One Focus-note checklist section (Upcoming / Actions / Past actions). Clicking a box ticks it in
-  // the Markdown file. flex_none with no own scrollbar: the Focus column (renderFocus) scrolls as one.
+  // the Markdown file; the pencil after it edits the line. No own scrollbar: the column scrolls as one.
   renderSection(t, section, label) {
     const sk = section.replace(/\s+/g, "-").toLowerCase();
     const u = this.foc[section];
@@ -312,11 +344,26 @@ export default class ProductiveTimer extends View {
     const list = !u ? [div().text_color(t.dim).child("Loading…")]
       : u.missing ? [div().text_color(t.dim).child(`No Focus note for ${wk}`)]
       : items.length === 0 ? [div().text_color(t.dim).child(empty)]
-      : items.map((it) => h_flex().id(`${sk}-${it.line}`).gap(8).items_start().py(3).px(4).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover))
-        .on_click((_e, cx) => this.toggleUp(section, it, cx))
-        .child(h_flex().size(14).mt(1).flex_none().rounded(3).border(1).border_color(it.checked ? t.ansi2 : t.input).bg(it.checked ? t.ansi2 : "#00000000").items_center().justify_center()
-          .text_size(10).font_bold().text_color(t.background).child(it.checked ? "✓" : ""))
-        .child(div().flex_1().min_w(0).text_size(11.5).text_color(it.checked ? t.dim : t.foreground).when(it.checked, (e) => e.line_through()).child(it.text)));
+      : items.map((it) => {
+        const box = h_flex().size(14).mt(1).flex_none().rounded(3).border(1).border_color(it.checked ? t.ansi2 : t.input).bg(it.checked ? t.ansi2 : "#00000000").items_center().justify_center()
+          .text_size(10).font_bold().text_color(t.background).child(it.checked ? "✓" : "");
+        if (this.editing && this.editing.section === section && this.editing.it.line === it.line) {
+          return h_flex().id(`${sk}-${it.line}`).gap(8).items_center().py(1).px(4).rounded(4).bg(t.hover)
+            .on_key_down((e, cx) => { if (e.key === "escape") { this.editing = null; cx.stop_propagation(); cx.notify(); } })
+            .child(box)
+            .child(div().flex_1().min_w(0).h(22).px(6).flex().items_center().rounded(4).border_1().border_color(t.accent).bg(t.background)
+              .child(Input.new(this.editIn).h_full().text_size(11.5).text_color(t.foreground)));
+        }
+        const stop = (_e, cx) => cx.stop_propagation();
+        return h_flex().id(`${sk}-${it.line}`).gap(8).items_start().py(3).px(4).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover))
+          .on_click((_e, cx) => this.toggleUp(section, it, cx))
+          .child(box)
+          .child(div().flex_1().min_w(0).text_size(11.5).text_color(it.checked ? t.dim : t.foreground).when(it.checked, (e) => e.line_through()).child(it.text))
+          .child(div().id(`${sk}-${it.line}-edit`).flex_none().px(3).rounded(3).text_size(11.5).text_color(t.dim).cursor_pointer()
+            .hover((s) => s.text_color(t.foreground).bg(t.surface)).tooltip("Edit")
+            .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); this.startEdit(section, it, cx); })
+            .child("✎"));
+      });
     return v_flex().gap(4).flex_none()
       .child(h_flex().justify_between().text_size(10.5).text_color(t.dim)
         .child(div().child(label))
@@ -324,11 +371,11 @@ export default class ProductiveTimer extends View {
       .child(v_flex().id(`sec-${sk}`).gap(1).children(list));
   }
 
-  // The three checklist sections under one FOCUS heading. Scrolls as a whole so a long Past-actions
-  // list never pushes the rest of the panel; the caller places it below the timer or beside it.
+  // The three checklist sections under one FOCUS heading. No scrollbar of its own: the column it
+  // sits in (below the timer, or beside it) scrolls as a whole.
   renderFocus(t) {
     const wk = (SECTIONS.map(([s]) => this.foc[s]).find((u) => u?.week)?.week ?? "").split("-")[1] ?? "";
-    return v_flex().id("focus").gap(12).flex_1().min_h(0).overflow_y_scrollbar()
+    return v_flex().id("focus").gap(12).flex_none()
       .child(h_flex().justify_between().text_size(11).text_color(t.dim)
         .child(div().child("FOCUS"))
         .child(div().child(wk)))
@@ -366,14 +413,14 @@ export default class ProductiveTimer extends View {
     if (this.navBusy || !b || !b.bookings || !b.days) { // loading a week, or a board without days (days.filter below would throw)
       const msg = this.navBusy ? `Loading week ${(b?.week || weekId(this.weekOffset)).split("W")[1] ?? ""}…`
         : (b ? "No bookings this week" : "No timer data yet. The sketchybar board has not been written.");
-      return body.child(this.navHeader(t))
+      return body.child(this.navHeader(t)).child(v_flex().id("scroll").flex_1().min_h(0).overflow_y_scrollbar().gap(12)
         .child(v_flex().flex_none().py(24).items_center().text_color(t.dim).child(msg))
-        .child(this.renderFocus(t));
+        .child(this.renderFocus(t)));
     }
     const add = st === "running" ? this.ageMin() : 0;
     const runKey = st === "running" ? b.running?.key : null;
     const book = (x) => x.tracked_minutes + (x.key === runKey ? add : 0);
-    const bookings = [...b.bookings].sort((x, y) => book(y) - book(x));
+    const bookings = [...b.bookings].sort((x, y) => (y.booked_minutes ?? 0) - (x.booked_minutes ?? 0) || book(y) - book(x)); // biggest plan, then most tracked
     const total = b.total_minutes + add;
     const target = b.target_minutes ?? 2400;
     const over = Math.max(0, total - target);
@@ -489,15 +536,15 @@ export default class ProductiveTimer extends View {
       .children(cols);
 
     const header = this.navHeader(t);
-    const rowsBlock = v_flex().id("rows").gap(2).max_h(170).flex_none().overflow_y_scrollbar().children(rows);
-    const weekBlock = v_flex().gap(8)
+    const rowsBlock = v_flex().id("rows").gap(2).flex_none().children(rows);
+    const weekBlock = v_flex().gap(8).flex_none()
       .child(label("This week", h_flex().gap(4)
         .child(div().font_semibold().text_color(t.foreground).child(fmtTotal(total)))
         .child(div().child(`/ ${Math.round(target / 60)}h`))
         .when(over > 0, (e) => e.child(div().text_color(red).child(`+${Math.round(over / 60)}h over`)))))
       .child(bar)
       .child(barDetail);
-    const daysBlock = v_flex().gap(4).mt(6)
+    const daysBlock = v_flex().gap(4).mt(6).flex_none()
       .child(label("Per day", div().child("first → last activity")))
       .child(days)
       .child(dayDetail);
@@ -508,9 +555,11 @@ export default class ProductiveTimer extends View {
     // centres and the Focus column would collapse to zero height.
     if (this.pw >= TWO_COL_MIN) {
       return body.child(header).child(h_flex().items_start().flex_1().min_h(0).gap(16)
-        .child(v_flex().flex_1().min_w(0).gap(12).child(rowsBlock).child(weekBlock).child(daysBlock))
-        .child(v_flex().w(300).flex_none().h_full().min_h(0).child(focus)));
+        .child(v_flex().id("left").flex_1().min_w(0).h_full().min_h(0).overflow_y_scrollbar().gap(12).child(rowsBlock).child(weekBlock).child(daysBlock))
+        .child(v_flex().id("right").w(300).flex_none().h_full().min_h(0).overflow_y_scrollbar().child(focus)));
     }
-    return body.child(header).child(rowsBlock).child(weekBlock).child(daysBlock).child(focus);
+    // One column: the header stays put, everything under it scrolls as one.
+    return body.child(header).child(v_flex().id("scroll").flex_1().min_h(0).overflow_y_scrollbar().gap(12)
+      .child(rowsBlock).child(weekBlock).child(daysBlock).child(focus));
   }
 }

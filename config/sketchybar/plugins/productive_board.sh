@@ -136,7 +136,8 @@ BOARD_JQ='
             service_id: ( ($p.service_id // "") | if . == "" then ($t.top_svc // "") else . end ),
             tracked_minutes: ($t.tracked // 0), booked_minutes: ($p.booked // null),
             pinned: ($k == $pinned), last: ($t.last // ["", 0]) } )
-      | sort_by([-.tracked_minutes, .key]) ) as $bk
+      # The panel list order: biggest plan first, then most tracked.
+      | sort_by([-(.booked_minutes // 0), -.tracked_minutes, .key]) ) as $bk
 
   # Chips: the 3 most recently tracked bookings that can actually be started,
   # then the pinned one last. Recency is this week only (the week is the one
@@ -203,7 +204,7 @@ timer_state() { # <json> <age>
 # so --build is hermetic.
 board_make() {
   local TAB=$'\t' NL=$'\n'
-  local state weekid core key budget project cached cand code taken_codes="" calls=0 dirty=0 asked codes meta=""
+  local state weekid core key budget project cached cand code taken_codes="" calls=0 dirty=0 asked codes meta="" solo
   weekid="$(date -j -f %Y-%m-%d "$MON" +%G-W%V)"
   state="$(timer_state "$TIMER" "$AGE")"
   printf '%s' "$TIMER" | jq -e 'type == "object"' >/dev/null 2>&1 || TIMER='{}'
@@ -217,7 +218,14 @@ board_make() {
   codes="$(cat "$CODES" 2>/dev/null)"
   printf '%s' "$codes" | jq -e 'type == "object"' >/dev/null 2>&1 || codes='{}'
 
-  # In board order (tracked desc), so the booking you work on most gets first
+  # The client code (thea-0001-... -> THEA) is the name people know, so it is the
+  # code whenever that client has ONE booking this week. Two or more (vbrb-0001
+  # under feature-flags and partnership-2027, plus vbrb-0010) would all read VBRB,
+  # so those fall back to the deal: the model's abbreviation of the budget.
+  solo=" $(printf '%s' "$core" | jq -r --arg i "$INTERNAL_PROJECT" '[.bookings[] | select(.project != $i)
+      | .project | select(test("^[a-z]{4}-")) | .[0:4]] | group_by(.) | map(select(length == 1) | .[0]) | join(" ")') "
+
+  # In board order (planned, then tracked desc), so the booking you work on most gets first
   # pick of its code when two would collide.
   while IFS=$'\t' read -r key project budget; do
     [ -n "$key" ] || continue
@@ -227,6 +235,8 @@ board_make() {
     # (mx-mana -> MANA). The model only ever saw "nove-internal" and answered NINT.
     if [ "$project" = "$INTERNAL_PROJECT" ]; then
       budget="${budget#mx-}"; cand="$(printf '%s' "$budget" | tr -cd 'A-Za-z' | tr 'a-z' 'A-Z' | cut -c1-4)"; cached="$cand"
+    elif [ "${project:4:1}" = - ] && [[ "$solo" == *" ${project:0:4} "* ]]; then
+      cand="$(printf '%s' "${project:0:4}" | tr 'a-z' 'A-Z')"; cached="$cand"
     elif [ -z "$cached" ] && [ "$LIVE" = 1 ] && [ "$calls" -lt "$MODEL_CALLS_MAX" ]; then
       calls=$((calls + 1)); asked=1
       cand="$(ask_model "$project" "$budget" "$taken_codes")" || cand=""
@@ -239,7 +249,7 @@ board_make() {
     # later tick); caching it would make "the rest are asked next tick" false.
     { [ "$code" = "$cached" ] || { [ -z "$cached" ] && [ "$asked" = 0 ]; }; } || { codes="$(printf '%s' "$codes" | jq -c --arg k "$key" --arg c "$code" '.[$k] = $c')"; dirty=1; }
     taken_codes="$taken_codes $code"
-    meta="$meta$key${TAB}$code${TAB}$(booking_hex "$key")${NL}"
+    meta="$meta$key${TAB}$code${NL}"
   done <<BOARDEOF
 $(printf '%s' "$core" | jq -r '.bookings[] | [.key, .project, .budget] | @tsv')
 BOARDEOF
@@ -248,8 +258,9 @@ BOARDEOF
     printf '%s\n' "$codes" > "$CODES.tmp.$$" && mv "$CODES.tmp.$$" "$CODES" || rm -f "$CODES.tmp.$$"
   fi
 
-  printf '%s' "$core" | jq --argjson meta "$(printf '%s' "$meta" | jq -Rnc '[inputs | select(length > 0) | split("\t") | {(.[0]): {code: .[1], color: .[2]}}] | add // {}')" \
-    '.bookings |= map(. + $meta[.key])'
+  printf '%s' "$core" | jq --argjson meta "$(printf '%s' "$meta" | jq -Rnc '[inputs | select(length > 0) | split("\t") | {(.[0]): {code: .[1]}}] | add // {}')" \
+    --argjson colors "$(printf '%s' "$core" | jq -c '[.bookings[] | {key, project}]' | booking_colors)" \
+    '.bookings |= map(. + $meta[.key] + {color: $colors[.key]})'
 }
 
 # --- a past/future week, for the panel's week switcher -------------------------

@@ -388,9 +388,11 @@ sketchybar --add item productive left \
   --subscribe productive system_woke herdr_flock
 
 # The overtime suffix is its own item because a label has one colour. Hugs the
-# anchor (negative padding) and hides itself under 40h.
+# anchor (negative padding) and hides itself under 40h. It reads as part of the
+# anchor, so it opens the panel too.
 sketchybar --add item productive_ot left \
   --set productive_ot drawing=off \
+  click_script="$PLUGIN_DIR/productive_panel.sh" \
   icon.drawing=off \
   label.font="$FONT_TEXT:Bold:12.0" \
   label.padding_left=0 \

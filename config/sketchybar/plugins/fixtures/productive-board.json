@@ -25,7 +25,33 @@
       "name": "vbrb-0001-medical-costs-platform · feature-flags",
       "chip": true,
       "code": "FLAG",
+      "color": "#7aa2f7"
+    },
+    {
+      "key": "thea-0001-mobile-app/mobile-app",
+      "project": "thea-0001-mobile-app",
+      "budget": "mobile-app",
+      "service_id": "2001",
+      "tracked_minutes": 540,
+      "booked_minutes": 720,
+      "pinned": false,
+      "name": "thea-0001-mobile-app · mobile-app",
+      "chip": true,
+      "code": "THEA",
       "color": "#ff9e64"
+    },
+    {
+      "key": "vbrb-0001-medical-costs-platform/partnership-2027",
+      "project": "vbrb-0001-medical-costs-platform",
+      "budget": "partnership-2027",
+      "service_id": "1002",
+      "tracked_minutes": 0,
+      "booked_minutes": 240,
+      "pinned": false,
+      "name": "vbrb-0001-medical-costs-platform · partnership-2027",
+      "chip": false,
+      "code": "PART",
+      "color": "#cadafc"
     },
     {
       "key": "mx-mana",
@@ -39,19 +65,6 @@
       "chip": true,
       "code": "MANA",
       "color": "#e0af68"
-    },
-    {
-      "key": "thea-0001-mobile-app/mobile-app",
-      "project": "thea-0001-mobile-app",
-      "budget": "mobile-app",
-      "service_id": "2001",
-      "tracked_minutes": 540,
-      "booked_minutes": 720,
-      "pinned": false,
-      "name": "thea-0001-mobile-app · mobile-app",
-      "chip": true,
-      "code": "THEA",
-      "color": "#7aa2f7"
     },
     {
       "key": "mx-trai",
@@ -77,20 +90,7 @@
       "name": "nove-internal · mx-busdev",
       "chip": false,
       "code": "BUSD",
-      "color": "#7dcfff"
-    },
-    {
-      "key": "vbrb-0001-medical-costs-platform/partnership-2027",
-      "project": "vbrb-0001-medical-costs-platform",
-      "budget": "partnership-2027",
-      "service_id": "1002",
-      "tracked_minutes": 0,
-      "booked_minutes": 240,
-      "pinned": false,
-      "name": "vbrb-0001-medical-costs-platform · partnership-2027",
-      "chip": false,
-      "code": "PART",
-      "color": "#7aa2f7"
+      "color": "#e9c795"
     }
   ],
   "chips": [

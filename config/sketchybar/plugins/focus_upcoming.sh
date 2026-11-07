@@ -7,6 +7,8 @@
 #
 #   focus_upcoming.sh [section] [week]                     print {week,path,section,missing,items:[...]}
 #   focus_upcoming.sh toggle <line> <raw> [section] [week] flip [ ] <-> [x] on that item
+#   focus_upcoming.sh edit <line> <raw> <new> [section] [week]
+#                                                          replace that item's line with <new>
 #
 #   section  heading title (default "Upcoming"), matched at any level, case-insensitive
 #   week     YYYY-Www (default: this week, or $FOCUS_WEEK) - the switcher passes other weeks here
@@ -25,12 +27,13 @@
 # and perl works on bytes so a CRLF note or a missing final newline survives.
 #
 # Items are "- [ ]", "+ [ ]" (and "* [ ]") lines under the section heading up to the
-# next heading. Exit codes of toggle: 0 toggled, 1 stale/ambiguous/missing, 2 usage.
+# next heading. Exit codes of toggle and edit: 0 written, 1 stale/ambiguous/missing,
+# 2 usage. An edit must stay one checklist line, or it is a usage error.
 
 set -u
 # A positional week (2nd arg when listing, 5th when toggling) overrides $FOCUS_WEEK;
 # the week switcher passes it so the whole note points at the chosen week.
-if [ "${1:-}" = toggle ]; then WEEK_ARG="${5:-}"; else WEEK_ARG="${2:-}"; fi
+case "${1:-}" in toggle) WEEK_ARG="${5:-}" ;; edit) WEEK_ARG="${6:-}" ;; *) WEEK_ARG="${2:-}" ;; esac
 WEEK="${WEEK_ARG:-${FOCUS_WEEK:-$(date +%G-W%V)}}"
 DIR="${FOCUS_DIR:-$HOME/Library/CloudStorage/GoogleDrive-ssymons@gmail.com/My Drive/Thoughts/Notes}"
 NOTE="${FOCUS_NOTE:-$DIR/$WEEK.md}"
@@ -46,14 +49,22 @@ items() {
     END { exit($seen ? 0 : 3) }' "$NOTE"
 }
 
-if [ "${1:-}" = toggle ]; then
-  { [ $# -ge 3 ] && [ $# -le 5 ]; } || { echo "usage: $0 toggle <line> <raw> [section] [week]" >&2; exit 2; }
-  SECTION="${4:-${FOCUS_SECTION:-Upcoming}}"
+if [ "${1:-}" = toggle ] || [ "${1:-}" = edit ]; then
+  NEW=""
+  if [ "$1" = edit ]; then
+    { [ $# -ge 4 ] && [ $# -le 6 ]; } || { echo "usage: $0 edit <line> <raw> <new> [section] [week]" >&2; exit 2; }
+    NEW="$4"; SECTION="${5:-${FOCUS_SECTION:-Upcoming}}"
+    case "$NEW" in *$'\n'*|*$'\r'*) echo "edit: one line only" >&2; exit 2 ;; esac
+    printf '%s' "$NEW" | grep -qE '^[-+*] \[[ xX]\] ' || { echo "edit: not a checklist line" >&2; exit 2; }
+  else
+    { [ $# -ge 3 ] && [ $# -le 5 ]; } || { echo "usage: $0 toggle <line> <raw> [section] [week]" >&2; exit 2; }
+    SECTION="${4:-${FOCUS_SECTION:-Upcoming}}"
+  fi
   [ -f "$NOTE" ] || exit 1
   TMP="$(mktemp "$NOTE.XXXXXX")" || exit 1
   # Candidates are items whose raw equals the one clicked; the clicked line wins
   # if it is one, else a single candidate, else nothing is written.
-  if OUT="$(LINE="$2" RAW="$3" SEC="$SECTION" perl -e '
+  if OUT="$(LINE="$2" RAW="$3" NEW="$NEW" SEC="$SECTION" perl -e '
       undef $/; open my $f, "<:raw", $ARGV[0] or exit 1; my $t = <$f>; close $f;
       my @l = split /(?<=\n)/, $t; my ($in, @c);
       for my $i (0 .. $#l) {
@@ -64,9 +75,13 @@ if [ "${1:-}" = toggle ]; then
       }
       # The clicked line already holds this text in the other state: someone (Obsidian) ticked it first.
       # Falling back to an identical twin elsewhere would tick the wrong task, so refuse.
-      if (defined(my $cl = $l[$ENV{LINE} - 1])) { (my $x = $cl) =~ s/\r?\n\z//; (my $y = $ENV{RAW}) =~ s/^(. \[)([ xX])/$1 . ($2 eq " " ? "x" : " ")/e; exit 1 if $x eq $y; }
+      if (!length $ENV{NEW} && defined(my $cl = $l[$ENV{LINE} - 1])) { (my $x = $cl) =~ s/\r?\n\z//; (my $y = $ENV{RAW}) =~ s/^(. \[)([ xX])/$1 . ($2 eq " " ? "x" : " ")/e; exit 1 if $x eq $y; }
       my $at = (grep { $_ == $ENV{LINE} - 1 } @c) ? $ENV{LINE} - 1 : (@c == 1 ? $c[0] : -1);
       exit 1 if $at < 0;
+      if (length $ENV{NEW}) {   # edit: swap the line, keep its ending (CRLF or none)
+        my ($eol) = $l[$at] =~ /(\r?\n)\z/; $l[$at] = $ENV{NEW} . ($eol // "");
+        open my $o, ">:raw", $ARGV[1] or exit 1; print $o @l; close $o or exit 1; print "edited\n"; exit 0;
+      }
       $l[$at] =~ s/^([-+*] \[)([ xX])(\])/$1 . ($2 eq " " ? "x" : " ") . $3/e;
       open my $o, ">:raw", $ARGV[1] or exit 1; print $o @l; close $o or exit 1;
       my ($n) = $l[$at] =~ /^[-+*] \[(.)\]/; print $n eq "x" ? "checked\n" : "unchecked\n";

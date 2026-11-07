@@ -63,19 +63,22 @@ productive_chips() {
   while IFS=$'\t' read -r code color pin key svc; do
     i=$((i + 1)); [ "$i" -le "$CHIP_SLOTS" ] || break
     local fill="$CHIP_FILL" fg="$FG" stripe="0xff${color#\#}" lbl="$code"
+    local click="$CONFIG_DIR/plugins/productive_switch.sh $svc"
     [ "$pin" = 1 ] && lbl="$code$PIN"
     if [ "$state" = unknown ] || [ "$board_state" = unknown ] || [ "$board_age" -gt "$BOARD_STALE" ]; then
       # The proposal's stale state: everything at ~45%, still clickable.
       fg="$FG_DIM"; stripe="0x73${color#\#}"
     elif [ -n "$running_key" ] && [ "$key" = "$running_key" ]; then
       fill="$GREEN"; fg="$CHIP_DARK"; stripe="0x80${CHIP_DARK#0xff}"
+      # The running chip has nothing to switch to: a second click opens the panel.
+      click="$CONFIG_DIR/plugins/productive_panel.sh"
     fi
     args+=(--set "productive_b$i" drawing=on background.color="$fill"
            --set "productive_s$i" drawing=on background.color="$stripe"
            --set "productive_c$i" drawing=on label="$lbl" label.color="$fg"
-             click_script="$CONFIG_DIR/plugins/productive_switch.sh $svc"
-           --set "productive_s$i" click_script="$CONFIG_DIR/plugins/productive_switch.sh $svc"
-           --set "productive_b$i" click_script="$CONFIG_DIR/plugins/productive_switch.sh $svc")
+             click_script="$click"
+           --set "productive_s$i" click_script="$click"
+           --set "productive_b$i" click_script="$click")
   done < <(printf '%s\n' "$lines" | tail -n +2)
   # Slots the board has no chip for (a fresh week with fewer than four bookings).
   while [ "$i" -lt "$CHIP_SLOTS" ]; do

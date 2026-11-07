@@ -684,8 +684,8 @@ is "board: committed fixture is what the builder emits" \
 is "board: every plan booking plus every tracked one (6)" "$(bq '.bookings|length')" "6"
 is "board: two budgets on one project stay two bookings" \
    "$(bq '[.bookings[]|select(.project|startswith("vbrb"))|.budget]|sort|join(",")')" "feature-flags,partnership-2027"
-is "board: sorted by tracked desc" \
-   "$(bq '[.bookings[].tracked_minutes]|. == (sort|reverse)')" "true"
+is "board: sorted by planned desc, then tracked desc" \
+   "$(bq '[.bookings[]|[(.booked_minutes // 0), .tracked_minutes]]|. == (sort|reverse)')" "true"
 is "board: running timer run is added to its booking (1274 entries + 58)" \
    "$(bq '.bookings[]|select(.budget=="feature-flags")|.tracked_minutes')" "1332"
 is "board: total, target, overtime" "$(bq '[.total_minutes,.target_minutes,.overtime_minutes]|join("/")')" "2944/2400/544"
@@ -721,6 +721,13 @@ is "board: a booking keeps its colour between builds" "$(BBUILD | jq -c '[.booki
 is "board: cached code used" "$(bq '.bookings[]|select(.key=="mx-mana")|.code')" "MANA"
 is "board: no cache -> first 4 letters of the budget" "$(bq '.bookings[]|select(.budget=="partnership-2027")|.code')" "PART"
 is "board: codes unique" "$(bq '[.bookings[].code]|(unique|length)==length')" "true"
+# With no cached codes: thea is the only thea booking, so THEA; vbrb has two, so its deals.
+BC="$(mktemp -d)"; cp -R "$BF"/. "$BC"/; printf '{}' > "$BC/codes.json"
+is "board: a sole client booking takes the client code, shared clients the deal" \
+   "$(BBUILD "$BC" | jq -r '[.bookings[]|select(.project|test("^(thea|vbrb)"))|.code]|sort|join(",")')" "FEAT,PART,THEA"
+rm -rf "$BC"
+is "board: a client's deals are shades of one blue, the first the base" \
+   "$(bq '[.bookings[]|select(.project|startswith("vbrb"))|.color]|join(",")')" "#7aa2f7,#cadafc"
 PB="$CONFIG_DIR/plugins/productive_board.sh"
 is "code: a free well-formed candidate wins" "$("$PB" --code feature-flags FLAG "THEA")" "FLAG"
 is "code: a taken candidate falls back to the budget" "$("$PB" --code feature-flags FLAG "FLAG")" "FEAT"
@@ -1425,6 +1432,13 @@ printf '## Upcoming\r\n- [ ] a\r\n- [ ] b' > "$FT/crlf.md"
 FOCUS_NOTE="$FT/crlf.md" "$FU" toggle 2 "- [ ] a" >/dev/null
 is "focus: CRLF and no final newline preserved" "$(od -An -c "$FT/crlf.md" | tr -d ' \n')" '##Upcoming\r\n-[x]a\r\n-[]b'
 is "focus: CRLF note lists without \\r" "$(FOCUS_NOTE="$FT/crlf.md" "$FU" | jq -c '[.items[].raw]')" '["- [x] a","- [ ] b"]'
+# Edit: the pencil swaps one item's line, keeping CRLF; a stale raw or a non-checklist line writes nothing.
+is "focus: edit replaces the line, CRLF kept" \
+   "$(FOCUS_NOTE="$FT/crlf.md" "$FU" edit 3 "- [ ] b" "- [ ] b2" >/dev/null; od -An -c "$FT/crlf.md" | tr -d ' \n')" '##Upcoming\r\n-[x]a\r\n-[]b2'
+FOCUS_NOTE="$FT/crlf.md" "$FU" edit 3 "- [ ] b" "- [ ] b3" >/dev/null 2>&1; rc=$?
+is "focus: edit of a stale raw -> exit 1" "$rc" "1"
+FOCUS_NOTE="$FT/crlf.md" "$FU" edit 3 "- [ ] b2" "no box" >/dev/null 2>&1; rc=$?
+is "focus: edit to a non-checklist line -> exit 2" "$rc" "2"
 # Missing pieces: both come back as data, never an error.
 is "focus: no Upcoming section" "$(FOCUS_NOTE="$FX/nosection.md" "$FU" | jq -c '[.missing,(.items|length)]')" '["section",0]'
 is "focus: no note" "$(FOCUS_NOTE="$FT/nope.md" FOCUS_WEEK=2026-W99 "$FU" | jq -c '[.missing,.week,(.items|length)]')" '["note","2026-W99",0]'
