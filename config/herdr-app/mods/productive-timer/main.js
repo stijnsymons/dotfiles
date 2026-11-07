@@ -21,7 +21,7 @@
 // planned hours + a pie per row (amber ring for the excess), and the Focus "Upcoming"
 // checklist (focus_upcoming.sh lists and toggles; this mod never touches the note itself).
 import { View, div, PathBuilder, Background } from "gpui-kit";
-import { h_flex, v_flex, Popup, InputState, Input } from "gpui-base";
+import { h_flex, v_flex, Popup, TextareaState, Textarea } from "gpui-base";
 import { exec, readTextFile, home, props, run, notify } from "herdr";
 
 const POLL_MS = 30000;          // the board is rebuilt every 60s upstream; no point reading faster
@@ -105,10 +105,14 @@ export default class ProductiveTimer extends View {
     this.weekOffset = 0;        // 0 this week, -1 last week, +1 next; the panel's < > switcher
     this.navBusy = false;       // a week jump is fetching its board
     this.pw = 0;                // the panel's own width (on_size_change): the breakpoint, not the window's
-    this.editing = null;        // {section, it}: the Focus item the pencil opened
+    this.editing = null;        // {section, it}: the Focus item whose text was clicked
     if (this.panel) {
-      this.editIn = InputState.new({});
+      // A textarea, not an input: it wraps and grows with the text. Enter still saves: a Focus item
+      // is one line, so a newline arriving in the value (Enter, or a paste) means "done".
+      this.editIn = TextareaState.new({});
+      this.editIn.set_auto_grow(1, 8);
       this.editIn.on("submit", (_e, cx) => this.saveEdit(cx));
+      this.editIn.on("change", (_e, cx) => { if (this.editing && this.editIn.value().includes("\n")) this.saveEdit(cx); });
       // Blur cancels only once the input has actually had focus: it is drawn a frame after the
       // pencil click, and a blur from before that would close the edit before you could type.
       this.editIn.on("focus", () => { if (this.editing) this.editing.focused = true; });
@@ -178,10 +182,12 @@ export default class ProductiveTimer extends View {
     });
   }
 
-  // Pencil: edit the item's Markdown (wikilinks and all, without the checkbox) in place.
+  // Clicking the text edits the item's Markdown (wikilinks and all, without the checkbox) in place.
   startEdit(section, it, cx) {
+    const text = it.raw.replace(/^[-+*] \[.\] +/, "");
     this.editing = { section, it, focused: false };
-    this.editIn.set_value(it.raw.replace(/^[-+*] \[.\] +/, ""));
+    this.editIn.set_value(text);
+    this.editIn.set_selected_range({ start: text.length, end: text.length });   // caret at the end, nothing selected
     cx.notify();
     // The Input only exists after this render, so focus it then (the other mods' focus-then-retry).
     for (const ms of [16, 120]) cx.timer.after(ms, () => { if (this.editing?.it === it && !this.editing.focused) this.editIn.focus(); });
@@ -192,7 +198,7 @@ export default class ProductiveTimer extends View {
     const e = this.editing;
     if (!e) return;
     this.editing = null;
-    const text = this.editIn.value().trim();
+    const text = this.editIn.value().replace(/\s*\n\s*/g, " ").trim();
     const next = e.it.raw.match(/^[-+*] \[.\] +/)[0] + text;
     if (!text || next === e.it.raw) { cx.notify(); return; }
     e.it.text = text;
@@ -337,7 +343,7 @@ export default class ProductiveTimer extends View {
   // ---------------------------------------------------------------- panel
 
   // One Focus-note checklist section (Upcoming / Actions / Past actions). Clicking a box ticks it in
-  // the Markdown file; the pencil after it edits the line. No own scrollbar: the column scrolls as one.
+  // the Markdown file; clicking the text edits the line. No own scrollbar: the column scrolls as one.
   renderSection(t, section, label) {
     const sk = section.replace(/\s+/g, "-").toLowerCase();
     const u = this.foc[section];
@@ -349,25 +355,21 @@ export default class ProductiveTimer extends View {
       : u.missing ? [div().text_color(t.dim).child(`No Focus note for ${wk}`)]
       : items.length === 0 ? [div().text_color(t.dim).child(empty)]
       : items.map((it) => {
-        const box = h_flex().size(14).mt(1).flex_none().rounded(3).border(1).border_color(it.checked ? t.ansi2 : t.input).bg(it.checked ? t.ansi2 : "#00000000").items_center().justify_center()
+        const box = h_flex().id(`${sk}-${it.line}-box`).size(14).mt(1).flex_none().cursor_pointer().rounded(3).border(1).border_color(it.checked ? t.ansi2 : t.input).bg(it.checked ? t.ansi2 : "#00000000").items_center().justify_center()
           .text_size(10).font_bold().text_color(t.background).child(it.checked ? "✓" : "");
         if (this.editing && this.editing.section === section && this.editing.it.line === it.line) {
-          return h_flex().id(`${sk}-${it.line}`).gap(8).items_center().px(4).rounded(4).bg(t.hover)
+          return h_flex().id(`${sk}-${it.line}`).gap(8).items_start().py(1).px(4).rounded(4).bg(t.hover)
             .on_key_down((e, cx) => { if (e.key === "escape") { this.editing = null; cx.stop_propagation(); cx.notify(); } })
-            .child(box)
-            .child(div().id(`${sk}-${it.line}-input`).flex_1().min_w(0).h(22).px(6).flex().items_center().rounded(4).border_1().border_color(t.accent).bg(t.background)
+            .child(box.mt(3))
+            .child(div().id(`${sk}-${it.line}-input`).flex_1().min_w(0).px(4).py(1).rounded(4).border_1().border_color(t.accent).bg(t.background)
               .cursor_text().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.editIn.focus(); })
-              .child(Input.new(this.editIn).h_full().text_size(11.5).text_color(t.foreground)));
+              .child(Textarea.new(this.editIn).w_full().text_size(11.5).text_color(t.foreground)));
         }
-        const stop = (_e, cx) => cx.stop_propagation();
-        return h_flex().id(`${sk}-${it.line}`).gap(8).items_start().py(3).px(4).rounded(4).cursor_pointer().hover((s) => s.bg(t.hover))
-          .on_click((_e, cx) => this.toggleUp(section, it, cx))
-          .child(box)
-          .child(div().flex_1().min_w(0).text_size(11.5).text_color(it.checked ? t.dim : t.foreground).when(it.checked, (e) => e.line_through()).child(it.text))
-          .child(div().id(`${sk}-${it.line}-edit`).flex_none().px(3).rounded(3).text_size(11.5).text_color(t.dim).cursor_pointer()
-            .hover((s) => s.text_color(t.foreground).bg(t.surface)).tooltip("Edit")
-            .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); this.startEdit(section, it, cx); })
-            .child("✎"));
+        // The box ticks, the text edits: two targets, so neither click can do the other's job.
+        return h_flex().id(`${sk}-${it.line}`).gap(8).items_start().py(3).px(4).rounded(4).hover((s) => s.bg(t.hover))
+          .child(box.on_click((_e, cx) => { cx.stop_propagation(); this.toggleUp(section, it, cx); }))
+          .child(div().id(`${sk}-${it.line}-text`).flex_1().min_w(0).cursor_text().text_size(11.5).text_color(it.checked ? t.dim : t.foreground).when(it.checked, (e) => e.line_through())
+            .on_click((_e, cx) => this.startEdit(section, it, cx)).child(it.text));
       });
     return v_flex().gap(4).flex_none()
       .child(h_flex().justify_between().text_size(10.5).text_color(t.dim)

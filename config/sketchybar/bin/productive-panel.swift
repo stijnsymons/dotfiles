@@ -477,9 +477,9 @@ final class DaysView: HoverView {
 
 // --- the Focus note's checklist sections ------------------------------------
 // One view per section (Upcoming / Actions / Past actions), stacked in the right-hand
-// column. Rows are text, so hit-testing by y is simpler than a view per line. A click
-// ticks the line in the note (through focus_upcoming.sh, which owns the Markdown) and
-// the controller reloads. Each [heading title (matches the note), display label].
+// column. Rows are text, so hit-testing by y is simpler than a view per line. A click on
+// the box ticks the line in the note, a click on the text edits it in place (both through
+// focus_upcoming.sh, which owns the Markdown), and the controller reloads. Each [heading title (matches the note), display label].
 let FOCUS_SECTIONS: [(key: String, label: String)] = [("Upcoming", "UPCOMING"), ("Actions", "ACTIONS"), ("Past actions", "PAST ACTIONS")]
 struct FocusItem { let line: Int; let checked: Bool; let text, raw: String }
 struct Focus { var week = "", path = ""; var missing: String? = "note"; var items: [FocusItem] = [] }
@@ -507,7 +507,7 @@ func toggleFocus(_ i: FocusItem, section: String, week: String) {
     try? p.run(); p.waitUntilExit()
 }
 
-/// The pencil: swap the item's line for `newRaw`. Same staleness rules as the toggle.
+/// An edit: swap the item's line for `newRaw`. Same staleness rules as the toggle.
 func editFocus(_ i: FocusItem, newRaw: String, section: String, week: String) {
     let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
     p.arguments = [configDir + "/plugins/focus_upcoming.sh", "edit", String(i.line), i.raw, newRaw, section, week]
@@ -522,15 +522,15 @@ func focusMarker(_ raw: String) -> String {
 
 final class UpcomingView: NSView, NSTextFieldDelegate {
     override var isFlipped: Bool { true }
-    static let font = NSFont.systemFont(ofSize: 12), textX: CGFloat = 26, headH: CGFloat = 22, pencilW: CGFloat = 20
+    static let font = NSFont.systemFont(ofSize: 12), textX: CGFloat = 26, headH: CGFloat = 22
     let focus: Focus, label: String, shown: [FocusItem], more: Int, onToggle: (FocusItem) -> Void
     var onEdit: (FocusItem, String) -> Void = { _, _ in }, onEditing: (Bool) -> Void = { _ in }
     var rows: [NSRect] = []
     var hover: Int? = nil { didSet { if oldValue != hover { needsDisplay = true } } }
     var field: NSTextField?, editingItem: FocusItem?
-    /// Height of one item: its text wraps to at most two lines, left of the pencil.
+    /// Height of one item: its text wraps to at most two lines.
     static func rowHeight(_ s: String, width: CGFloat) -> CGFloat {
-        let h = NSAttributedString(string: s, attributes: [.font: font]).boundingRect(with: NSSize(width: width - textX - pencilW, height: 1000), options: .usesLineFragmentOrigin).height
+        let h = NSAttributedString(string: s, attributes: [.font: font]).boundingRect(with: NSSize(width: width - textX, height: 1000), options: .usesLineFragmentOrigin).height
         return min(ceil(h), 32) + 10
     }
     /// What the section needs for `items`, so the controller can budget the screen before building it.
@@ -548,26 +548,36 @@ final class UpcomingView: NSView, NSTextFieldDelegate {
     func at(_ e: NSEvent) -> Int? { let p = convert(e.locationInWindow, from: nil); return rows.firstIndex { $0.contains(p) } }
     override func mouseMoved(with e: NSEvent) { hover = at(e) }
     override func mouseExited(with e: NSEvent) { hover = nil }
-    func pencil(_ rr: NSRect) -> NSRect { NSRect(x: bounds.width - Self.pencilW + 2, y: rr.minY + 4, width: Self.pencilW - 2, height: 18) }
+    // The box (and the gutter round it) ticks; the text edits.
     override func mouseDown(with e: NSEvent) {
         guard let i = at(e) else { return }
-        if pencil(rows[i]).contains(convert(e.locationInWindow, from: nil)) { beginEdit(i) } else { onToggle(shown[i]) }
+        if convert(e.locationInWindow, from: nil).x < Self.textX - 4 { onToggle(shown[i]) } else { beginEdit(i) }
     }
-    // An inline field over the row, holding the line's Markdown minus its checkbox.
+    // An inline field over the row, holding the line's Markdown minus its checkbox. It wraps and
+    // grows downward with the text (fit), over the rows beneath, until Enter or Esc.
     func beginEdit(_ n: Int) {
         endEdit(save: false)
         let it = shown[n], rr = rows[n], m = focusMarker(it.raw)
         let f = NSTextField(frame: NSRect(x: Self.textX - 4, y: rr.minY + 2, width: bounds.width - Self.textX + 4, height: 22))
         f.stringValue = String(it.raw.dropFirst(m.count)); f.font = Self.font; f.textColor = fg
+        f.usesSingleLineMode = false; f.cell?.wraps = true; f.cell?.isScrollable = false; f.maximumNumberOfLines = 0
         f.isBordered = false; f.drawsBackground = true; f.backgroundColor = NSColor(white: 0.08, alpha: 1); f.focusRingType = .none
         f.wantsLayer = true; f.layer?.cornerRadius = 4; f.layer?.borderWidth = 1; f.layer?.borderColor = hex("7aa2f7").cgColor
         f.delegate = self; addSubview(f); field = f; editingItem = it
-        onEditing(true); window?.makeFirstResponder(f)
+        if let sv = superview { sv.addSubview(self, positioned: .above, relativeTo: nil) }   // a grown field overlaps the next section, not under it
+        fit(f); onEditing(true); window?.makeFirstResponder(f)
+        f.currentEditor()?.selectedRange = NSRange(location: (f.stringValue as NSString).length, length: 0)   // caret at the end, nothing selected
     }
+    func fit(_ f: NSTextField) {
+        let h = f.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: f.frame.width, height: 10_000)).height ?? 18
+        f.frame.size.height = max(22, ceil(h) + 4)
+    }
+    func controlTextDidChange(_ n: Notification) { if let f = field { fit(f) } }
     func endEdit(save: Bool) {
         guard let f = field, let it = editingItem else { return }
         field = nil; editingItem = nil
-        let text = f.stringValue.trimmingCharacters(in: .whitespaces), next = focusMarker(it.raw) + text
+        let text = f.stringValue.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        let next = focusMarker(it.raw) + text
         f.removeFromSuperview(); onEditing(false)
         if save && !text.isEmpty && next != it.raw { onEdit(it, next) }
     }
@@ -601,8 +611,7 @@ final class UpcomingView: NSView, NSTextFieldDelegate {
             if i.checked { a.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: a.length)) }
             let p = NSMutableParagraphStyle(); p.lineBreakMode = .byWordWrapping   // wraps to two lines, the last one ellipsised
             a.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: a.length))
-            a.draw(with: NSRect(x: Self.textX, y: rr.minY + 5, width: bounds.width - Self.textX - Self.pencilW, height: rr.height - 8), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-            text("✎", Self.font, hover == n ? fg : faint, in: pencil(rr), align: .center)
+            a.draw(with: NSRect(x: Self.textX, y: rr.minY + 5, width: bounds.width - Self.textX, height: rr.height - 8), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
         }
         if more > 0 { text("+\(more) more in the note", NSFont.systemFont(ofSize: 11), faint, in: NSRect(x: Self.textX, y: (rows.last?.maxY ?? Self.headH) + 3, width: bounds.width - Self.textX, height: 14)) }
     }
@@ -626,7 +635,7 @@ final class Controller: NSObject, NSWindowDelegate {
     var board = Board(), focus: [String: Focus] = [:]   // section title -> listing
     var mtime = Date.distantPast, focusMtime = Date.distantPast
     var weekOffset = 0, navBusy = false                 // the < > switcher: 0 this week, -1 last, +1 next
-    var editing = false                                 // a Focus item's pencil field is open: no rebuilds
+    var editing = false                                 // a Focus item's edit field is open: no rebuilds
     var notePath: String { focus["Upcoming"]?.path ?? "" }   // all sections read the same note
     var closing = false, built = false
     var clickMonitor: Any?
