@@ -109,7 +109,10 @@ export default class ProductiveTimer extends View {
     if (this.panel) {
       this.editIn = InputState.new({});
       this.editIn.on("submit", (_e, cx) => this.saveEdit(cx));
-      this.editIn.on("blur", (_e, cx) => { if (this.editing) { this.editing = null; cx.notify(); } });
+      // Blur cancels only once the input has actually had focus: it is drawn a frame after the
+      // pencil click, and a blur from before that would close the edit before you could type.
+      this.editIn.on("focus", () => { if (this.editing) this.editing.focused = true; });
+      this.editIn.on("blur", (_e, cx) => { if (this.editing?.focused) { this.editing = null; cx.notify(); } });
     }
     cx.timer.every(POLL_MS, (cx) => { this.load(cx); this.loadUp(cx); });
     cx.spawn((cx) => { this.load(cx); this.loadUp(cx); });
@@ -177,10 +180,11 @@ export default class ProductiveTimer extends View {
 
   // Pencil: edit the item's Markdown (wikilinks and all, without the checkbox) in place.
   startEdit(section, it, cx) {
-    this.editing = { section, it };
+    this.editing = { section, it, focused: false };
     this.editIn.set_value(it.raw.replace(/^[-+*] \[.\] +/, ""));
-    this.editIn.focus();
     cx.notify();
+    // The Input only exists after this render, so focus it then (the other mods' focus-then-retry).
+    for (const ms of [16, 120]) cx.timer.after(ms, () => { if (this.editing?.it === it && !this.editing.focused) this.editIn.focus(); });
   }
 
   // Enter: write the line back through the script, which refuses if the note changed under it.
@@ -348,10 +352,11 @@ export default class ProductiveTimer extends View {
         const box = h_flex().size(14).mt(1).flex_none().rounded(3).border(1).border_color(it.checked ? t.ansi2 : t.input).bg(it.checked ? t.ansi2 : "#00000000").items_center().justify_center()
           .text_size(10).font_bold().text_color(t.background).child(it.checked ? "✓" : "");
         if (this.editing && this.editing.section === section && this.editing.it.line === it.line) {
-          return h_flex().id(`${sk}-${it.line}`).gap(8).items_center().py(1).px(4).rounded(4).bg(t.hover)
+          return h_flex().id(`${sk}-${it.line}`).gap(8).items_center().px(4).rounded(4).bg(t.hover)
             .on_key_down((e, cx) => { if (e.key === "escape") { this.editing = null; cx.stop_propagation(); cx.notify(); } })
             .child(box)
-            .child(div().flex_1().min_w(0).h(22).px(6).flex().items_center().rounded(4).border_1().border_color(t.accent).bg(t.background)
+            .child(div().id(`${sk}-${it.line}-input`).flex_1().min_w(0).h(22).px(6).flex().items_center().rounded(4).border_1().border_color(t.accent).bg(t.background)
+              .cursor_text().on_mouse_down("left", (_e, cx) => { cx.stop_propagation(); this.editIn.focus(); })
               .child(Input.new(this.editIn).h_full().text_size(11.5).text_color(t.foreground)));
         }
         const stop = (_e, cx) => cx.stop_propagation();

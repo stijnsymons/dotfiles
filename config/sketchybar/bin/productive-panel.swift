@@ -507,15 +507,30 @@ func toggleFocus(_ i: FocusItem, section: String, week: String) {
     try? p.run(); p.waitUntilExit()
 }
 
-final class UpcomingView: NSView {
+/// The pencil: swap the item's line for `newRaw`. Same staleness rules as the toggle.
+func editFocus(_ i: FocusItem, newRaw: String, section: String, week: String) {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh", "edit", String(i.line), i.raw, newRaw, section, week]
+    var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
+    p.standardInput = FileHandle.nullDevice; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+    try? p.run(); p.waitUntilExit()
+}
+/// "- [ ] " / "+ [x] " ...: the checkbox an edit keeps, so only the text is typed.
+func focusMarker(_ raw: String) -> String {
+    raw.range(of: #"^[-+*] \[.\] +"#, options: .regularExpression).map { String(raw[$0]) } ?? "- [ ] "
+}
+
+final class UpcomingView: NSView, NSTextFieldDelegate {
     override var isFlipped: Bool { true }
-    static let font = NSFont.systemFont(ofSize: 12), textX: CGFloat = 26, headH: CGFloat = 22
+    static let font = NSFont.systemFont(ofSize: 12), textX: CGFloat = 26, headH: CGFloat = 22, pencilW: CGFloat = 20
     let focus: Focus, label: String, shown: [FocusItem], more: Int, onToggle: (FocusItem) -> Void
+    var onEdit: (FocusItem, String) -> Void = { _, _ in }, onEditing: (Bool) -> Void = { _ in }
     var rows: [NSRect] = []
     var hover: Int? = nil { didSet { if oldValue != hover { needsDisplay = true } } }
-    /// Height of one item: its text wraps to at most two lines.
+    var field: NSTextField?, editingItem: FocusItem?
+    /// Height of one item: its text wraps to at most two lines, left of the pencil.
     static func rowHeight(_ s: String, width: CGFloat) -> CGFloat {
-        let h = NSAttributedString(string: s, attributes: [.font: font]).boundingRect(with: NSSize(width: width - textX, height: 1000), options: .usesLineFragmentOrigin).height
+        let h = NSAttributedString(string: s, attributes: [.font: font]).boundingRect(with: NSSize(width: width - textX - pencilW, height: 1000), options: .usesLineFragmentOrigin).height
         return min(ceil(h), 32) + 10
     }
     /// What the section needs for `items`, so the controller can budget the screen before building it.
@@ -533,7 +548,36 @@ final class UpcomingView: NSView {
     func at(_ e: NSEvent) -> Int? { let p = convert(e.locationInWindow, from: nil); return rows.firstIndex { $0.contains(p) } }
     override func mouseMoved(with e: NSEvent) { hover = at(e) }
     override func mouseExited(with e: NSEvent) { hover = nil }
-    override func mouseDown(with e: NSEvent) { if let i = at(e) { onToggle(shown[i]) } }
+    func pencil(_ rr: NSRect) -> NSRect { NSRect(x: bounds.width - Self.pencilW + 2, y: rr.minY + 4, width: Self.pencilW - 2, height: 18) }
+    override func mouseDown(with e: NSEvent) {
+        guard let i = at(e) else { return }
+        if pencil(rows[i]).contains(convert(e.locationInWindow, from: nil)) { beginEdit(i) } else { onToggle(shown[i]) }
+    }
+    // An inline field over the row, holding the line's Markdown minus its checkbox.
+    func beginEdit(_ n: Int) {
+        endEdit(save: false)
+        let it = shown[n], rr = rows[n], m = focusMarker(it.raw)
+        let f = NSTextField(frame: NSRect(x: Self.textX - 4, y: rr.minY + 2, width: bounds.width - Self.textX + 4, height: 22))
+        f.stringValue = String(it.raw.dropFirst(m.count)); f.font = Self.font; f.textColor = fg
+        f.isBordered = false; f.drawsBackground = true; f.backgroundColor = NSColor(white: 0.08, alpha: 1); f.focusRingType = .none
+        f.wantsLayer = true; f.layer?.cornerRadius = 4; f.layer?.borderWidth = 1; f.layer?.borderColor = hex("7aa2f7").cgColor
+        f.delegate = self; addSubview(f); field = f; editingItem = it
+        onEditing(true); window?.makeFirstResponder(f)
+    }
+    func endEdit(save: Bool) {
+        guard let f = field, let it = editingItem else { return }
+        field = nil; editingItem = nil
+        let text = f.stringValue.trimmingCharacters(in: .whitespaces), next = focusMarker(it.raw) + text
+        f.removeFromSuperview(); onEditing(false)
+        if save && !text.isEmpty && next != it.raw { onEdit(it, next) }
+    }
+    // Enter saves, Esc cancels the edit (not the panel); clicking away cancels too.
+    func control(_ c: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        if sel == #selector(NSResponder.insertNewline(_:)) { endEdit(save: true); return true }
+        if sel == #selector(NSResponder.cancelOperation(_:)) { endEdit(save: false); return true }
+        return false
+    }
+    func controlTextDidEndEditing(_ n: Notification) { endEdit(save: false) }
     override func draw(_ r: NSRect) {
         let done = focus.items.filter { $0.checked }.count
         text(label, capsFont, dim, in: NSRect(x: 0, y: 0, width: 160, height: 14), kern: 0.8)
@@ -557,7 +601,8 @@ final class UpcomingView: NSView {
             if i.checked { a.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: a.length)) }
             let p = NSMutableParagraphStyle(); p.lineBreakMode = .byWordWrapping   // wraps to two lines, the last one ellipsised
             a.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: a.length))
-            a.draw(with: NSRect(x: Self.textX, y: rr.minY + 5, width: bounds.width - Self.textX, height: rr.height - 8), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            a.draw(with: NSRect(x: Self.textX, y: rr.minY + 5, width: bounds.width - Self.textX - Self.pencilW, height: rr.height - 8), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+            text("✎", Self.font, hover == n ? fg : faint, in: pencil(rr), align: .center)
         }
         if more > 0 { text("+\(more) more in the note", NSFont.systemFont(ofSize: 11), faint, in: NSRect(x: Self.textX, y: (rows.last?.maxY ?? Self.headH) + 3, width: bounds.width - Self.textX, height: 14)) }
     }
@@ -581,6 +626,7 @@ final class Controller: NSObject, NSWindowDelegate {
     var board = Board(), focus: [String: Focus] = [:]   // section title -> listing
     var mtime = Date.distantPast, focusMtime = Date.distantPast
     var weekOffset = 0, navBusy = false                 // the < > switcher: 0 this week, -1 last, +1 next
+    var editing = false                                 // a Focus item's pencil field is open: no rebuilds
     var notePath: String { focus["Upcoming"]?.path ?? "" }   // all sections read the same note
     var closing = false, built = false
     var clickMonitor: Any?
@@ -634,7 +680,7 @@ final class Controller: NSObject, NSWindowDelegate {
     /// box). On another week the board is static (loaded once, forced or still empty); only its note
     /// is watched. Skipped entirely while a week jump is mid-flight, so the 2s tick can't race it.
     func reload(force: Bool) {
-        if navBusy { return }
+        if navBusy || editing { return }   // a rebuild would throw away the edit field mid-typing
         let fm = mtimeOf(notePath), fNew = force || (fm ?? .distantPast) != focusMtime   // != : the note appearing or vanishing counts too
         if weekOffset == 0 {
             let bm = mtimeOf(boardPath), bNew = force || (bm ?? .distantPast) > mtime
@@ -670,6 +716,9 @@ final class Controller: NSObject, NSWindowDelegate {
     }
 
     func toggle(_ i: FocusItem, section: String) { toggleFocus(i, section: section, week: weekId(offset: weekOffset)); reload(force: true) }
+    func edit(_ i: FocusItem, newRaw: String, section: String) {
+        editFocus(i, newRaw: newRaw, section: section, week: weekId(offset: weekOffset)); reload(force: true)
+    }
 
     func build() {
         built = true
@@ -740,6 +789,8 @@ final class Controller: NSObject, NSWindowDelegate {
             let sv = UpcomingView(f, label: s.label, shown: shownS, more: moreS,
                                   frame: NSRect(x: rightX, y: yR, width: rightW, height: total),
                                   onToggle: { [weak self] in self?.toggle($0, section: key) })
+            sv.onEdit = { [weak self] in self?.edit($0, newRaw: $1, section: key) }
+            sv.onEditing = { [weak self] in self?.editing = $0 }
             fx.addSubview(sv); yR += total + 12; budget -= total + 12
         }
         let H = max(leftBottom, yR) + 4
