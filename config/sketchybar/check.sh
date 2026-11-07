@@ -428,9 +428,13 @@ CO="$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')$(sketchybar 
 is "opening one card closes the other" "$CO" "offon"
 "$CONFIG_DIR/plugins/card.sh" clock close >/dev/null 2>&1
 
-# Hover must be gone entirely.
-grep -rq "mouse.entered" "$CONFIG_DIR/sketchybarrc" "$CONFIG_DIR/plugins" "$CONFIG_DIR/cards" 2>/dev/null \
-  && bad "mouse.entered still wired somewhere" || ok "no hover wiring left"
+# Card hover must be gone entirely. The one exception is the timer chips' detail
+# popup (productive_chip_hover.sh), which is deliberate and not a card.
+HW="$(grep -rn "mouse.entered" "$CONFIG_DIR/sketchybarrc" "$CONFIG_DIR/plugins" "$CONFIG_DIR/cards" 2>/dev/null \
+  | grep -v 'productive_chip_hover.sh\|--subscribe productive_c\$i' || true)"
+[ -z "$HW" ] && ok "no card hover wiring left (chip popups aside)" || bad "mouse.entered still wired somewhere: $HW"
+CH="$(PRODUCTIVE_BOARD="$CONFIG_DIR/plugins/fixtures/productive-board.json" PRODUCTIVE_DOW=5 CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/productive_chip_hover.sh" --text 1)"
+is "chip hover detail: over target" "$CH" "$(printf 'vbrb-0001-medical-costs-platform · feature-flags\t22h12m of 20h00m planned, over by 2h12m')"
 
 echo "outside click:"
 # sketchybar has no global click event, so a click elsewhere is inferred from
@@ -1374,6 +1378,60 @@ else
     && is "the pill is on the focused workspace" "$WS_PILLS" "$WS_FOCUSED" \
     || is "focused workspace $WS_FOCUSED is off the cluster, no pill" "$WS_PILLS" ""
 fi
+
+echo "focus_upcoming:"
+# The Upcoming checklist of the Focus note and its toggle, on copies of the real
+# W45 shape (a "+ [ ]" line, aliased wikilinks, bold). Never the vault's note.
+FX="$CONFIG_DIR/plugins/fixtures/focus"; FU="$CONFIG_DIR/plugins/focus_upcoming.sh"
+FT="$(mktemp -d)"; cp "$FX/2026-W45.md" "$FT/n.md"
+FJ="$(FOCUS_NOTE="$FT/n.md" FOCUS_WEEK=2026-W45 "$FU")"
+fq() { printf '%s' "$FJ" | jq -r "$1"; }
+fu() { FOCUS_NOTE="$FT/n.md" "$FU" "$@"; }
+is "focus: 8 items, none from other sections" "$(fq '.items|length')" "8"
+is "focus: checked lines" "$(fq '[.items[]|select(.checked)|.line]|join(",")')" "9,11,14"
+is "focus: + [ ] line is kept" "$(fq '[.items[]|select(.raw|startswith("+"))|.line]|join(",")')" "12"
+is "focus: alias shown, bold stripped" "$(fq '.items[0].text[0:11]')" "THEA: groun"
+is "focus: plain wikilink shows its target" "$(fq '.items[1].text[0:28]')" "vbrb-0001-wallet-integration"
+is "focus: no markup left in text" "$(fq '[.items[].text|select(test("\\[\\[|\\*\\*"))]|length')" "0"
+is "focus: missing null, week echoed" "$(fq '[.missing,.week]|tostring')" '[null,"2026-W45"]'
+# Toggle both ways: only the one line changes (diff has exactly one - and one +).
+R8="$(sed -n 8p "$FT/n.md")"
+is "focus: toggle on" "$(fu toggle 8 "$R8")" "checked"
+is "focus: line 8 is now [x], nothing else moved" \
+   "$(diff "$FX/2026-W45.md" "$FT/n.md" | grep -c '^[<>]') $(sed -n 8p "$FT/n.md" | cut -c1-5)" "2 - [x]"
+is "focus: toggle off restores the file byte for byte" \
+   "$(fu toggle 8 "$(sed -n 8p "$FT/n.md")" >/dev/null; cmp -s "$FX/2026-W45.md" "$FT/n.md" && echo same)" "same"
+is "focus: + [ ] toggles and keeps its +" "$(fu toggle 12 "$(sed -n 12p "$FT/n.md")"; sed -n 12p "$FT/n.md" | cut -c1-5)" "checked
++ [x]"
+cp "$FX/2026-W45.md" "$FT/n.md"
+# Stale: Obsidian inserted a line above, so the clicked number now points elsewhere.
+R10="$(sed -n 10p "$FT/n.md")"
+sed -i '' '7i\
+- [ ] inserted by Obsidian
+' "$FT/n.md"
+is "focus: stale line number finds the unique raw line" "$(fu toggle 10 "$R10")" "checked"
+is "focus: ...and ticked that one, not the one now on line 10" \
+   "$(grep -c -F -e "$(printf '%s' "$R10" | sed 's/\[ \]/[x]/')" "$FT/n.md") $(sed -n 10p "$FT/n.md" | cut -c1-5)" "1 - [x]"
+cp "$FT/n.md" "$FT/before.md"
+fu toggle 7 "- [ ] text that is gone" >/dev/null 2>&1; rc=$?
+is "focus: raw nowhere in the note -> exit 1, no write" "$rc $(cmp -s "$FT/n.md" "$FT/before.md" && echo same)" "1 same"
+printf '%s\n%s\n' "- [ ] dup" "- [ ] dup" > "$FT/d.md"; sed -i '' 's/^/&/' "$FT/d.md"
+{ printf '## Upcoming\n'; cat "$FT/d.md"; } > "$FT/dup.md"
+FOCUS_NOTE="$FT/dup.md" "$FU" toggle 9 "- [ ] dup" >/dev/null 2>&1; rc=$?
+is "focus: ambiguous stale raw -> exit 1, no write" "$rc $(grep -c '\[x\]' "$FT/dup.md")" "1 0"
+is "focus: a duplicate at the right line is fine" "$(FOCUS_NOTE="$FT/dup.md" "$FU" toggle 3 "- [ ] dup") $(sed -n 3p "$FT/dup.md")" "checked - [x] dup"
+# Bytes: CRLF and a missing final newline survive.
+printf '## Upcoming\r\n- [ ] a\r\n- [ ] b' > "$FT/crlf.md"
+FOCUS_NOTE="$FT/crlf.md" "$FU" toggle 2 "- [ ] a" >/dev/null
+is "focus: CRLF and no final newline preserved" "$(od -An -c "$FT/crlf.md" | tr -d ' \n')" '##Upcoming\r\n-[x]a\r\n-[]b'
+is "focus: CRLF note lists without \\r" "$(FOCUS_NOTE="$FT/crlf.md" "$FU" | jq -c '[.items[].raw]')" '["- [x] a","- [ ] b"]'
+# Missing pieces: both come back as data, never an error.
+is "focus: no Upcoming section" "$(FOCUS_NOTE="$FX/nosection.md" "$FU" | jq -c '[.missing,(.items|length)]')" '["section",0]'
+is "focus: no note" "$(FOCUS_NOTE="$FT/nope.md" FOCUS_WEEK=2026-W99 "$FU" | jq -c '[.missing,.week,(.items|length)]')" '["note","2026-W99",0]'
+FOCUS_NOTE="$FT/nope.md" "$FU" toggle 1 "- [ ] a" >/dev/null 2>&1
+is "focus: toggle on a missing note fails" "$?" "1"
+is "focus: no temp files left behind" "$(ls -A "$FT" | grep -c '\.[A-Za-z0-9]\{6\}')" "0"
+rm -rf "$FT"
 
 echo "deps:"
 # timeout is Homebrew coreutils, not stock macOS: meeting_fetch.sh loses its

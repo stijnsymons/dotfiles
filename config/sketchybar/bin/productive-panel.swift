@@ -2,20 +2,24 @@
 // day columns, in a native window that opens right under the bar's anchor item.
 //
 //   productive-panel [--board <board.json>] [--top <px from screen top>] [--x <px>]
-//                    [--appearance light|dark] [--screenshot <out.png>]
+//                    [--screenshot <out.png>]
+//                    test seams (with --screenshot): [--hover-seg <n>] [--hover-day <n>] [--toggle-item <n>]
 //
 // Why a window and not a sketchybar popup: popups are text rows. They can list
 // the bookings and fake a horizontal bar, but not columns that float on a clock
-// axis with a dashed presence outline, hatching, hover or tooltips. This is the
+// axis with a dashed presence outline, hatching, pies or hover detail. This is the
 // one place on the bar that draws, so it uses what macOS has natively:
-// NSVisualEffectView vibrancy (light/dark follows the system on its own),
-// Core Graphics for the bar and the columns, SF Symbols for the play buttons,
-// NSView tooltips, a fade/slide open.
+// Core Graphics for the bar, the columns and the pies, SF Symbols for the play
+// buttons, a fade/slide open.
+//
+// Always dark, in the bar's own Tokyo Night (colors.sh), whatever the system
+// appearance says: the panel hangs off the bar and must read as part of it.
 //
 // It only READS productive-board.json (productive_board.sh owns that file, and
 // the herdr.app mod reads the same one, so the two UIs cannot disagree) and its
-// only action is productive_switch.sh <service_id>. It never talks to
-// Productive itself.
+// actions are productive_switch.sh <service_id> and focus_upcoming.sh toggle, which
+// ticks a line of this week's Focus note in Obsidian. It never talks to Productive
+// itself.
 //
 // Dismiss: Esc, a click anywhere else (the window resigning key, plus a global
 // mouse monitor for the clicks that do not take focus), or a switch. The panel
@@ -28,8 +32,8 @@ import AppKit
 var boardPath = ProcessInfo.processInfo.environment["PRODUCTIVE_BOARD"] ?? ""
 var topInset: CGFloat = 36
 var anchorX: CGFloat = 12
-var forcedAppearance: NSAppearance.Name? = nil
 var shotPath: String? = nil
+var testHoverSeg: Int? = nil, testHoverDay: Int? = nil, testToggle: Int? = nil
 do {
     let a = CommandLine.arguments
     var i = 1
@@ -39,7 +43,9 @@ do {
         case "--board": boardPath = v ?? boardPath
         case "--top": topInset = CGFloat(Double(v ?? "") ?? Double(topInset))
         case "--x": anchorX = CGFloat(Double(v ?? "") ?? Double(anchorX))
-        case "--appearance": forcedAppearance = v == "light" ? .aqua : .darkAqua
+        case "--hover-seg": testHoverSeg = Int(v ?? "")
+        case "--hover-day": testHoverDay = Int(v ?? "")
+        case "--toggle-item": testToggle = Int(v ?? "")
         case "--screenshot": shotPath = v
         default: i -= 1
         }
@@ -56,19 +62,18 @@ let configDir = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinks
     .deletingLastPathComponent().deletingLastPathComponent().path
 
 // --- palette ----------------------------------------------------------------
-// Tokyo Night, as colors.sh. Booking colours come from the board verbatim; the
-// state colours get a darker twin in light mode so text stays readable.
+// Tokyo Night Storm, copied from colors.sh (POPUP_BG, FG, FG_DIM, SEPARATOR...).
+// Booking colours come from the board verbatim. dim is a step lighter than the
+// bar's FG_DIM (#565f89, the comment colour): that one is fine for a glyph but
+// too faint for 10pt text on a panel, so it is kept for `faint`.
 func hex(_ s: String) -> NSColor {
     var v: UInt64 = 0; Scanner(string: s.replacingOccurrences(of: "#", with: "")).scanHexInt64(&v)
     return NSColor(srgbRed: CGFloat((v >> 16) & 0xff) / 255, green: CGFloat((v >> 8) & 0xff) / 255,
                    blue: CGFloat(v & 0xff) / 255, alpha: 1)
 }
-func dyn(_ dark: String, _ light: String) -> NSColor {
-    NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? hex(dark) : hex(light) }
-}
-let green = dyn("9ece6a", "4f8a1e"), amber = dyn("e0af68", "9a6a1d")
-let greenFill = dyn("9ece6a", "6aa83a"), onGreen = hex("1a1b26")
-let dim = NSColor.secondaryLabelColor, faint = NSColor.tertiaryLabelColor
+let bg = hex("1f2335"), fg = hex("c0caf5"), dim = hex("828bb8"), faint = hex("565f89"), sep = hex("3b4261")
+let green = hex("9ece6a"), amber = hex("e0af68"), onGreen = hex("1a1b26")
+let greenFill = green
 
 // --- data -------------------------------------------------------------------
 struct Booking {
@@ -156,27 +161,57 @@ func hatch(_ ctx: CGContext, _ rect: NSRect) {
     ctx.strokePath(); ctx.restoreGState()
 }
 
-/// A view that registers one tooltip rect per hit target and re-registers on layout.
-class HoverView: NSView, NSViewToolTipOwner {
+/// A view that tracks the pointer and says which hit target it is over. The
+/// detail for that target is drawn by the subclass in a fixed block beneath the
+/// graphic (not a native tooltip: those sit at the cursor, a beat late, and cover
+/// the very thing being read).
+class HoverView: NSView {
     override var isFlipped: Bool { true }
-    var hits: [(rect: NSRect, tip: String)] = []
+    var hits: [NSRect] = []
+    var point: NSPoint? = nil { didSet { hover = point.flatMap { p in hits.firstIndex { $0.contains(p) } } } }
     var hover: Int? = nil { didSet { if oldValue != hover { needsDisplay = true } } }
     override func updateTrackingAreas() {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
-    override func mouseMoved(with e: NSEvent) {
-        let p = convert(e.locationInWindow, from: nil)
-        hover = hits.firstIndex { $0.rect.contains(p) }
+    override func mouseMoved(with e: NSEvent) { point = convert(e.locationInWindow, from: nil) }
+    override func mouseExited(with e: NSEvent) { point = nil }
+}
+
+/// The fixed detail block: a faint rounded plate, up to three lines, or a hint when nothing is hovered.
+func detailBlock(_ r: NSRect, _ lines: [NSAttributedString], hint: String) {
+    fg.withAlphaComponent(0.05).setFill(); NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
+    if lines.isEmpty {
+        text(hint, NSFont.systemFont(ofSize: 11), faint, in: NSRect(x: r.minX + 10, y: r.midY - 7, width: r.width - 20, height: 14)); return
     }
-    override func mouseExited(with e: NSEvent) { hover = nil }
-    func registerTips() {
-        removeAllToolTips()
-        for (i, h) in hits.enumerated() { addToolTip(h.rect, owner: self, userData: UnsafeMutableRawPointer(bitPattern: i + 1)) }
+    for (i, l) in lines.enumerated() { l.draw(with: NSRect(x: r.minX + 10, y: r.minY + 7 + CGFloat(i) * 15, width: r.width - 20, height: 15), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]) }
+}
+func attr(_ s: String, _ font: NSFont = .systemFont(ofSize: 11.5), _ color: NSColor = dim) -> NSMutableAttributedString {
+    let p = NSMutableParagraphStyle(); p.lineBreakMode = .byTruncatingTail
+    return NSMutableAttributedString(string: s, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: p])
+}
+
+/// A pie of `frac` (tracked / planned) in the booking colour. Past the target the
+/// pie is full and an amber ring round it shows the excess as its own fraction:
+/// 150% is a half ring, 200% or more a closed one. Polylines, not arcs: CG's arc
+/// direction flips with the view, and a polyline cannot get that wrong.
+func pie(_ ctx: CGContext, _ c: CGPoint, color: NSColor, frac: Double, over: Double) {
+    let r: CGFloat = 5.4, ring: CGFloat = 7.6
+    func pt(_ a: Double, _ rad: CGFloat) -> CGPoint { CGPoint(x: c.x + rad * CGFloat(sin(a)), y: c.y - rad * CGFloat(cos(a))) }
+    fg.withAlphaComponent(0.12).setFill(); NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)).fill()
+    let f = min(1, max(0, frac)) * Double(openProgress)
+    if f > 0 {
+        ctx.setFillColor(color.cgColor); ctx.move(to: c)
+        let n = max(2, Int(f * 48)); for i in 0...n { ctx.addLine(to: pt(f * 2 * .pi * Double(i) / Double(n), r)) }
+        ctx.closePath(); ctx.fillPath()
     }
-    func view(_ v: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData: UnsafeMutableRawPointer?) -> String {
-        let i = Int(bitPattern: userData) - 1
-        return hits.indices.contains(i) ? hits[i].tip : ""
+    if over > 0 {
+        ctx.setLineWidth(1.7); ctx.setStrokeColor(amber.withAlphaComponent(0.22).cgColor)
+        ctx.addEllipse(in: CGRect(x: c.x - ring, y: c.y - ring, width: 2 * ring, height: 2 * ring)); ctx.strokePath()
+        let o = min(1, over) * Double(openProgress), n = max(2, Int(o * 48))
+        ctx.setStrokeColor(amber.cgColor); ctx.move(to: pt(0, ring))
+        for i in 1...n { ctx.addLine(to: pt(o * 2 * .pi * Double(i) / Double(n), ring)) }
+        ctx.strokePath()
     }
 }
 
@@ -194,7 +229,7 @@ final class RowView: NSView {
         play.isBordered = false; play.imagePosition = .imageOnly; play.target = self; play.action = #selector(go)
         play.image = NSImage(systemSymbolName: running ? "stop.fill" : "play.fill", accessibilityDescription: running ? "Timing" : "Start")?
             .withSymbolConfiguration(.init(pointSize: 9, weight: .bold))
-        play.contentTintColor = running ? onGreen : .labelColor
+        play.contentTintColor = running ? onGreen : fg
         play.toolTip = running ? "Already timing" : "Start timing \(b.code)"
         play.alphaValue = running ? 1 : 0.55
         play.frame = NSRect(x: frame.width - 28, y: (frame.height - 22) / 2, width: 22, height: 22)
@@ -207,25 +242,31 @@ final class RowView: NSView {
     override func mouseExited(with e: NSEvent) { hovering = false }
     override func mouseDown(with e: NSEvent) { go() }
     override func draw(_ r: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         if running { green.withAlphaComponent(0.13).setFill(); NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill() }
-        else if hovering { NSColor.labelColor.withAlphaComponent(0.07).setFill(); NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill() }
+        else if hovering { fg.withAlphaComponent(0.07).setFill(); NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill() }
         b.color.setFill(); NSBezierPath(roundedRect: NSRect(x: 4, y: 6, width: 4, height: bounds.height - 12), xRadius: 2, yRadius: 2).fill()
         // play button disc, drawn here so it sits under the SF Symbol
-        let d = play.frame.insetBy(dx: 0, dy: 0)
+        let d = play.frame
         if running { greenFill.setFill(); NSBezierPath(ovalIn: d).fill() }
-        else { NSColor.separatorColor.setStroke(); let p = NSBezierPath(ovalIn: d.insetBy(dx: 0.5, dy: 0.5)); p.lineWidth = 1; p.stroke() }
-        // right: tracked bold, /booked dim
-        let tw: CGFloat = 70, tx = d.minX - 10 - tw
-        let t = NSMutableAttributedString(string: fmtRow(b.tracked), attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-            .foregroundColor: b.tracked == 0 ? dim : NSColor.labelColor])
-        if let bk = b.booked { t.append(NSAttributedString(string: "/" + fmtRow(bk), attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: dim])) }
-        let ps = NSMutableParagraphStyle(); ps.alignment = .right
-        t.addAttribute(.paragraphStyle, value: ps, range: NSRange(location: 0, length: t.length))
-        t.draw(in: NSRect(x: tx, y: (bounds.height - 15) / 2, width: tw, height: 16))
-        // left: full name, dim budget, green elapsed on the running row
-        let n = NSMutableAttributedString(string: b.project, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: NSColor.labelColor])
+        else { sep.setStroke(); let p = NSBezierPath(ovalIn: d.insetBy(dx: 0.5, dy: 0.5)); p.lineWidth = 1; p.stroke() }
+        // right to left: play, pie, planned (dim), tracked. Both number columns are
+        // right-aligned so the digits line up down the list: "12H  15H". With no plan
+        // (internal) the pie and the planned slot stay empty, so the rest does not shift.
+        let plan = (b.booked ?? 0) > 0 ? b.booked : nil
+        let pieC = CGPoint(x: d.minX - 10 - 8, y: bounds.midY)
+        let px = pieC.x - 8 - 8 - 34, tx = px - 4 - 40       // planned column, tracked column
+        let over = plan.map { b.tracked > $0 } ?? false
+        if let p = plan {
+            let f = Double(b.tracked) / Double(p)
+            pie(ctx, pieC, color: b.color, frac: f, over: over ? f - 1 : 0)
+            text(fmtRow(p), NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), dim,
+                 in: NSRect(x: px, y: (bounds.height - 15) / 2, width: 34, height: 16), align: .right)
+        }
+        text(fmtRow(b.tracked), NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+             over ? amber : (b.tracked == 0 ? dim : fg), in: NSRect(x: tx, y: (bounds.height - 15) / 2, width: 40, height: 16), align: .right)
+        // left: full name, dim budget
+        let n = NSMutableAttributedString(string: b.project, attributes: [.font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: fg])
         n.append(NSAttributedString(string: " · " + b.budget, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: dim]))
         let p = NSMutableParagraphStyle(); p.lineBreakMode = .byTruncatingTail
         n.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: n.length))
@@ -238,6 +279,7 @@ final class RowView: NSView {
 
 // --- the 40h week bar -------------------------------------------------------
 final class WeekBar: HoverView {
+    static let height: CGFloat = 58 + 44            // the bar itself + the detail block beneath it
     var board = Board()
     var domain: Double { max(Double(board.target), (Double(board.total) / 300).rounded(.up) * 300) }
     let barY: CGFloat = 22, barH: CGFloat = 16
@@ -249,16 +291,24 @@ final class WeekBar: HoverView {
         for b in board.bookings.sorted(by: { $0.tracked > $1.tracked }) where b.tracked > 0 {
             let r = NSRect(x: x, y: barY, width: CGFloat(b.tracked) * scale, height: barH)
             segs.append((b, r)); x = r.maxX
-            hits.append((r, "\(b.project) · \(b.budget)\n\(fmtHM(b.tracked)) this week, \(board.total > 0 ? b.tracked * 100 / board.total : 0)% of the total"))
+            hits.append(r.insetBy(dx: 0, dy: -6))
         }
-        registerTips()
+    }
+    func detail(_ b: Booking) -> [NSAttributedString] {
+        let share = board.total > 0 ? b.tracked * 100 / board.total : 0
+        let head = attr("● ", .systemFont(ofSize: 11.5), b.color); head.append(attr("\(b.project) · \(b.budget)", .systemFont(ofSize: 12, weight: .semibold), fg))
+        var s = "\(fmtHM(b.tracked)) tracked · \(share)% of the week · "
+        s += (b.booked ?? 0) > 0 ? "\(fmtHM(b.booked!)) planned" : "no plan"
+        let l2 = attr(s)
+        if let p = b.booked, p > 0, b.tracked > p { l2.append(attr(" · over by \(fmtHM(b.tracked - p))", .systemFont(ofSize: 11.5, weight: .semibold), amber)) }
+        return [head, l2]
     }
     override func draw(_ dirty: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         relayout()
         let over = board.overtime > 0
         text("THIS WEEK", capsFont, dim, in: NSRect(x: 0, y: 0, width: 120, height: 14), kern: 0.8)
-        let right = NSMutableAttributedString(string: fmtHM(board.total), attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: NSColor.labelColor])
+        let right = NSMutableAttributedString(string: fmtHM(board.total), attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: fg])
         right.append(NSAttributedString(string: " / \(board.target / 60)h", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular), .foregroundColor: dim]))
         if over { right.append(NSAttributedString(string: "  +\(fmtHM(board.overtime)) over", attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: amber])) }
         let ps = NSMutableParagraphStyle(); ps.alignment = .right
@@ -266,7 +316,7 @@ final class WeekBar: HoverView {
         right.draw(in: NSRect(x: 120, y: 0, width: bounds.width - 120, height: 15))
 
         let track = NSRect(x: 0, y: barY, width: bounds.width, height: barH)
-        NSColor.labelColor.withAlphaComponent(0.08).setFill(); NSBezierPath(roundedRect: track, xRadius: 4, yRadius: 4).fill()
+        fg.withAlphaComponent(0.08).setFill(); NSBezierPath(roundedRect: track, xRadius: 4, yRadius: 4).fill()
         ctx.saveGState()
         NSBezierPath(roundedRect: track, xRadius: 4, yRadius: 4).addClip()
         for (i, s) in segs.enumerated() {
@@ -277,26 +327,34 @@ final class WeekBar: HoverView {
         let markX = CGFloat(board.target) / CGFloat(domain) * bounds.width
         if over, let last = segs.last, last.r.maxX > markX { hatch(ctx, NSRect(x: markX, y: barY, width: last.r.maxX - markX, height: barH)) }
         ctx.restoreGState()
-        NSColor.labelColor.setFill(); NSRect(x: markX - 1, y: barY - 4, width: 2, height: barH + 8).fill()
+        fg.setFill(); NSRect(x: markX - 1, y: barY - 4, width: 2, height: barH + 8).fill()
         text("\(board.target / 60)h", monoSmall, dim, in: NSRect(x: markX - 20, y: barY + barH + 6, width: 40, height: 12), align: .center)
+        detailBlock(NSRect(x: 0, y: 58, width: bounds.width, height: 38), hover.map { detail(segs[$0].b) } ?? [], hint: "Hover a segment for the booking behind it")
     }
 }
 
 // --- seven day columns on a clock axis --------------------------------------
 final class DaysView: HoverView {
+    static let height: CGFloat = 32 + 180 + 14 + 30 + 8 + 52   // columns + the detail block beneath
     var board = Board()
-    let axisW: CGFloat = 34, top: CGFloat = 32, bandH: CGFloat = 200, footH: CGFloat = 34
+    let axisW: CGFloat = 34, top: CGFloat = 32, bandH: CGFloat = 180, footH: CGFloat = 34
     var cols: [(day: Day, r: NSRect)] = []
+    var hoverCol: Int? = nil { didSet { if oldValue != hoverCol { needsDisplay = true } } }
     var h0 = 7.0, h1 = 23.0
     var segs: [(key: String, r: NSRect)] = []
-    // hits also holds the untracked-gap tips, so a hit's index is not its seg's index.
+    // hits also holds the untracked-gap rects, so a hit's index is not its seg's index.
     var hitSeg: [Int?] = []
     func y(_ t: Double) -> CGFloat { top + CGFloat((t - h0) / (h1 - h0)) * bandH }
+    override func mouseMoved(with e: NSEvent) {
+        super.mouseMoved(with: e)
+        hoverCol = point.flatMap { p in cols.firstIndex { p.x >= $0.r.minX - 3 && p.x < $0.r.maxX + 3 && p.y < top + bandH + 44 } }
+    }
+    override func mouseExited(with e: NSEvent) { super.mouseExited(with: e); hoverCol = nil }
     func relayout() {
         let ts = board.days.compactMap { $0.start }.map(clock), te = board.days.compactMap { $0.end }.map(clock)
         h0 = min(7, (ts.min() ?? 7).rounded(.down)); h1 = max(23, (te.max() ?? 23).rounded(.up))
         let cw = (bounds.width - axisW - 6 * 6) / 7
-        cols = board.days.enumerated().map { (i, d) in (d, NSRect(x: axisW + CGFloat(i) * (cw + 6), y: 0, width: cw, height: bounds.height)) }
+        cols = board.days.enumerated().map { (i, d) in (d, NSRect(x: axisW + CGFloat(i) * (cw + 6), y: 0, width: cw, height: top + bandH + 44)) }
         hits = []; segs = []; hitSeg = []
         let pxMin = bandH / CGFloat((h1 - h0) * 60)
         for (_, c) in cols.enumerated() {
@@ -308,35 +366,56 @@ final class DaysView: HoverView {
             for (k, m) in c.day.minutes.sorted(by: { $0.value > $1.value }) {
                 let hgt = CGFloat(m) * pxMin * openProgress
                 let r = NSRect(x: c.r.minX + 6, y: yy, width: c.r.width - 12, height: hgt)
-                let name = board.booking(k).map { "\($0.project) · \($0.budget)" } ?? k
-                segs.append((k, r)); hitSeg.append(segs.count - 1); hits.append((r, "\(c.day.dow): \(name)\n\(fmtHM(m))")); yy += hgt
+                segs.append((k, r)); hitSeg.append(segs.count - 1); hits.append(r); yy += hgt
             }
-            let total = c.day.minutes.values.reduce(0, +), pres = Int(((clock(e) - clock(s)) * 60).rounded())
             let gapTop = yy, gapBot = y(clock(e))
             if c.day.start != nil, gapBot > gapTop + 2 {
                 hitSeg.append(nil)
-                hits.append((NSRect(x: c.r.minX + 6, y: gapTop, width: c.r.width - 12, height: gapBot - gapTop),
-                    "\(c.day.dow): at the machine \(s)–\(e)\n\(fmtHM(max(0, pres - total))) not tracked"))
+                hits.append(NSRect(x: c.r.minX + 6, y: gapTop, width: c.r.width - 12, height: gapBot - gapTop))
             }
         }
-        registerTips()
     }
     override func layout() { super.layout(); relayout() }
+    /// date, presence, tracked vs present, the untracked gap, and the per-booking split
+    func detail(_ d: Day) -> [NSAttributedString] {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        let o = DateFormatter(); o.locale = f.locale; o.dateFormat = "d MMM"
+        let when = f.date(from: d.date).map { "\(d.dow) \(o.string(from: $0))" } ?? d.dow
+        let total = d.minutes.values.reduce(0, +)
+        let l1 = attr(when, .systemFont(ofSize: 12, weight: .semibold), fg)
+        var l2 = attr("")
+        if let s = d.start, let e = d.end {
+            let pres = Int(((clock(e) - clock(s)) * 60).rounded())
+            l1.append(attr("  \(s)–\(e) at the machine"))
+            l2 = attr("\(fmtHM(total)) tracked of \(fmtHM(pres)) present · ")
+            l2.append(attr("\(fmtHM(max(0, pres - total))) not tracked", .systemFont(ofSize: 11.5, weight: .semibold), pres - total > 60 ? amber : dim))
+        } else {
+            l1.append(attr(total > 0 ? "  no activity samples" : "  nothing recorded"))
+            l2 = attr(total > 0 ? "\(fmtHM(total)) tracked" : "0m tracked")
+        }
+        let l3 = attr("")
+        for (k, m) in d.minutes.sorted(by: { $0.value > $1.value }) {
+            let b = board.booking(k)
+            if l3.length > 0 { l3.append(attr("  ·  ")) }
+            l3.append(attr("● ", .systemFont(ofSize: 11), b?.color ?? dim)); l3.append(attr("\(b?.code ?? k) \(fmtRow(m))", .systemFont(ofSize: 11.5), fg))
+        }
+        return [l1, l2, l3]
+    }
     override func draw(_ dirty: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         relayout()
         text("PER DAY", capsFont, dim, in: NSRect(x: 0, y: 0, width: 100, height: 14), kern: 0.8)
         text("first → last activity", NSFont.systemFont(ofSize: 10), dim, in: NSRect(x: bounds.width - 160, y: 0, width: 160, height: 14), align: .right)
         for h in [8, 12, 16, 20] where Double(h) >= h0 && Double(h) <= h1 {
-            NSColor.separatorColor.withAlphaComponent(0.5).setFill(); NSRect(x: axisW, y: y(Double(h)), width: bounds.width - axisW, height: 0.5).fill()
+            sep.withAlphaComponent(0.7).setFill(); NSRect(x: axisW, y: y(Double(h)), width: bounds.width - axisW, height: 0.5).fill()
             text(String(format: "%02d:00", h), monoSmall, faint, in: NSRect(x: 0, y: y(Double(h)) - 6, width: axisW - 4, height: 12), align: .right)
         }
         let today = board.generatedAt.prefix(10)
         let hoverKey = hover.flatMap { hitSeg.indices.contains($0) ? hitSeg[$0] : nil }.map { segs[$0].r }
-        for c in cols {
+        for (ci, c) in cols.enumerated() {
             let isToday = c.day.date == today
-            if let hk = hoverKey, hk.minX >= c.r.minX, hk.maxX <= c.r.maxX {
-                NSColor.labelColor.withAlphaComponent(0.05).setFill(); NSBezierPath(roundedRect: c.r.insetBy(dx: 1, dy: 0), xRadius: 6, yRadius: 6).fill()
+            if hoverCol == ci {
+                fg.withAlphaComponent(0.07).setFill(); NSBezierPath(roundedRect: c.r.insetBy(dx: 1, dy: 0), xRadius: 6, yRadius: 6).fill()
             }
             let total = c.day.minutes.values.reduce(0, +)
             let mine = segs.filter { $0.r.minX == c.r.minX + 6 }
@@ -345,8 +424,8 @@ final class DaysView: HoverView {
                 let top = y(clock(s)), bot = y(clock(e))
                 let outline = NSBezierPath(roundedRect: NSRect(x: c.r.minX + 6, y: top, width: c.r.width - 12, height: max(2, (bot - top) * openProgress)), xRadius: 4, yRadius: 4)
                 outline.setLineDash([3, 3], count: 2, phase: 0); outline.lineWidth = 1
-                NSColor.tertiaryLabelColor.setStroke(); outline.stroke()
-                text(s, monoSmall, NSColor.labelColor, in: NSRect(x: c.r.minX, y: top - 14, width: c.r.width, height: 12), align: .center)
+                faint.setStroke(); outline.stroke()
+                text(s, monoSmall, fg, in: NSRect(x: c.r.minX, y: top - 14, width: c.r.width, height: 12), align: .center)
                 text(e, monoSmall, dim, in: NSRect(x: c.r.minX, y: bot + 3, width: c.r.width, height: 12), align: .center)
             }
             // the stack: one rounded clip, so only its outer corners round
@@ -361,14 +440,105 @@ final class DaysView: HoverView {
             }
             let fy = top + bandH + 14
             text(total > 0 ? fmtRow(total) : "–", NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
-                 isToday ? green : NSColor.labelColor, in: NSRect(x: c.r.minX, y: fy, width: c.r.width, height: 14), align: .center)
+                 isToday ? green : fg, in: NSRect(x: c.r.minX, y: fy, width: c.r.width, height: 14), align: .center)
             text(c.day.dow, NSFont.systemFont(ofSize: 10, weight: isToday ? .semibold : .regular),
                  isToday ? green : dim, in: NSRect(x: c.r.minX, y: fy + 14, width: c.r.width, height: 12), align: .center)
         }
+        detailBlock(NSRect(x: 0, y: bounds.height - 52, width: bounds.width, height: 52),
+                    hoverCol.map { detail(cols[$0].day) } ?? [], hint: "Hover a day for its hours and where they went")
+    }
+}
+
+// --- the Focus note's Upcoming checklist ------------------------------------
+// One view for the whole section: rows are text, so hit-testing by y is simpler
+// than a view per line. A click ticks the line in the note (through
+// focus_upcoming.sh, which owns the Markdown) and the controller reloads.
+struct FocusItem { let line: Int; let checked: Bool; let text, raw: String }
+struct Focus { var week = "", path = ""; var missing: String? = "note"; var items: [FocusItem] = [] }
+func loadFocus() -> Focus {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh"]
+    var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
+    let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
+    guard (try? p.run()) != nil else { return Focus() }
+    let data = out.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+    guard let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return Focus() }
+    var f = Focus(); f.week = j["week"] as? String ?? ""; f.path = j["path"] as? String ?? ""; f.missing = j["missing"] as? String
+    for x in j["items"] as? [[String: Any]] ?? [] {
+        f.items.append(FocusItem(line: x["line"] as? Int ?? 0, checked: x["checked"] as? Bool ?? false,
+                                 text: x["text"] as? String ?? "", raw: x["raw"] as? String ?? ""))
+    }
+    return f
+}
+/// Runs the toggle and waits (it is a temp file and a rename, a few ms); the caller reloads.
+func toggleFocus(_ i: FocusItem) {
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh", "toggle", String(i.line), i.raw]
+    var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
+    p.standardInput = FileHandle.nullDevice; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+    try? p.run(); p.waitUntilExit()
+}
+
+final class UpcomingView: NSView {
+    override var isFlipped: Bool { true }
+    static let font = NSFont.systemFont(ofSize: 12), textX: CGFloat = 26, headH: CGFloat = 22
+    let focus: Focus, shown: [FocusItem], more: Int, onToggle: (FocusItem) -> Void
+    var rows: [NSRect] = []
+    var hover: Int? = nil { didSet { if oldValue != hover { needsDisplay = true } } }
+    /// Height of one item: its text wraps to at most two lines.
+    static func rowHeight(_ s: String, width: CGFloat) -> CGFloat {
+        let h = NSAttributedString(string: s, attributes: [.font: font]).boundingRect(with: NSSize(width: width - textX, height: 1000), options: .usesLineFragmentOrigin).height
+        return min(ceil(h), 32) + 10
+    }
+    /// What the section needs for `items`, so the controller can budget the screen before building it.
+    static func height(of items: [FocusItem], width: CGFloat, more: Bool) -> CGFloat {
+        headH + (items.isEmpty ? 24 : items.reduce(0) { $0 + rowHeight($1.text, width: width) }) + (more ? 20 : 0)
+    }
+    init(_ f: Focus, shown: [FocusItem], more: Int, frame: NSRect, onToggle: @escaping (FocusItem) -> Void) {
+        focus = f; self.shown = shown; self.more = more; self.onToggle = onToggle
+        super.init(frame: frame)
+        var y = Self.headH
+        for i in shown { let h = Self.rowHeight(i.text, width: frame.width); rows.append(NSRect(x: 0, y: y, width: frame.width, height: h)); y += h }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func at(_ e: NSEvent) -> Int? { let p = convert(e.locationInWindow, from: nil); return rows.firstIndex { $0.contains(p) } }
+    override func mouseMoved(with e: NSEvent) { hover = at(e) }
+    override func mouseExited(with e: NSEvent) { hover = nil }
+    override func mouseDown(with e: NSEvent) { if let i = at(e) { onToggle(shown[i]) } }
+    override func draw(_ r: NSRect) {
+        let done = focus.items.filter { $0.checked }.count
+        text("UPCOMING", capsFont, dim, in: NSRect(x: 0, y: 0, width: 120, height: 14), kern: 0.8)
+        text(focus.missing == nil ? "\(done)/\(focus.items.count) done · \(focus.week.split(separator: "-").last.map(String.init) ?? "")" : "FOCUS NOTE",
+             capsFont, faint, in: NSRect(x: bounds.width - 160, y: 0, width: 160, height: 14), align: .right, kern: 0.8)
+        if focus.missing != nil || focus.items.isEmpty {
+            let w = focus.week.split(separator: "-").last.map(String.init) ?? focus.week
+            text(focus.missing != nil ? "No Focus note for \(w)" : "Nothing upcoming in the \(w) note", NSFont.systemFont(ofSize: 12), faint,
+                 in: NSRect(x: 0, y: Self.headH + 2, width: bounds.width, height: 16)); return
+        }
+        for (n, i) in shown.enumerated() {
+            let rr = rows[n]
+            if hover == n { fg.withAlphaComponent(0.07).setFill(); NSBezierPath(roundedRect: rr.insetBy(dx: -4, dy: 1), xRadius: 6, yRadius: 6).fill() }
+            let box = NSRect(x: 0, y: rr.minY + 6, width: 14, height: 14), bp = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
+            if i.checked {
+                green.setFill(); bp.fill()
+                onGreen.setStroke(); let t = NSBezierPath(); t.lineWidth = 1.8; t.lineCapStyle = .round; t.lineJoinStyle = .round
+                t.move(to: NSPoint(x: box.minX + 3.5, y: box.midY + 0.3)); t.line(to: NSPoint(x: box.minX + 6, y: box.midY + 3)); t.line(to: NSPoint(x: box.maxX - 3.2, y: box.midY - 2.8)); t.stroke()
+            } else { faint.setStroke(); bp.lineWidth = 1.2; bp.stroke() }
+            let a = NSMutableAttributedString(string: i.text, attributes: [.font: Self.font, .foregroundColor: i.checked ? faint : fg])
+            if i.checked { a.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: a.length)) }
+            let p = NSMutableParagraphStyle(); p.lineBreakMode = .byWordWrapping   // wraps to two lines, the last one ellipsised
+            a.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: a.length))
+            a.draw(with: NSRect(x: Self.textX, y: rr.minY + 5, width: bounds.width - Self.textX, height: rr.height - 8), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
+        }
+        if more > 0 { text("+\(more) more in the note", NSFont.systemFont(ofSize: 11), faint, in: NSRect(x: Self.textX, y: (rows.last?.maxY ?? Self.headH) + 3, width: bounds.width - Self.textX, height: 14)) }
     }
 }
 
 // --- the window -------------------------------------------------------------
+/// Flipped, so everything is laid out top-down.
+final class Root: NSView { override var isFlipped: Bool { true } }
+
 final class Panel: NSPanel {
     override var canBecomeKey: Bool { true }
     override func keyDown(with e: NSEvent) { if e.keyCode == 53 { (delegate as? Controller)?.dismiss() } else { super.keyDown(with: e) } }
@@ -378,9 +548,9 @@ final class Panel: NSPanel {
 final class Controller: NSObject, NSWindowDelegate {
     let W: CGFloat = 468, pad: CGFloat = 16
     var panel: Panel!
-    var fx: NSVisualEffectView!
-    var board = Board()
-    var mtime = Date.distantPast
+    var fx: Root!
+    var board = Board(), focus = Focus()
+    var mtime = Date.distantPast, focusMtime = Date.distantPast
     var closing = false, built = false
     var clickMonitor: Any?
 
@@ -390,11 +560,10 @@ final class Controller: NSObject, NSWindowDelegate {
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        if let n = forcedAppearance { panel.appearance = NSAppearance(named: n) }
-        fx = NSVisualEffectView()
-        fx.material = .hudWindow; fx.blendingMode = .behindWindow; fx.state = .active
-        fx.wantsLayer = true; fx.layer?.cornerRadius = 14; fx.layer?.masksToBounds = true
-        fx.layer?.borderWidth = 0.5; fx.layer?.borderColor = NSColor.separatorColor.cgColor
+        panel.appearance = NSAppearance(named: .darkAqua)   // system controls (the play symbols) stay dark too
+        fx = Root()
+        fx.wantsLayer = true; fx.layer?.backgroundColor = bg.cgColor; fx.layer?.cornerRadius = 14; fx.layer?.masksToBounds = true
+        fx.layer?.borderWidth = 1; fx.layer?.borderColor = sep.cgColor
         panel.contentView = fx
         reload(force: true)
         place()
@@ -419,13 +588,24 @@ final class Controller: NSObject, NSWindowDelegate {
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.reload(force: false) }
     }
 
-    func reload(force: Bool) {
-        let m = (try? FileManager.default.attributesOfItem(atPath: boardPath)[.modificationDate] as? Date) ?? nil
-        if !force, let m = m, m <= mtime { return }
-        mtime = m ?? mtime
-        guard let b = loadBoard() else { if !built { board = Board(); build() }; return }
-        board = b; build()
+    func mtimeOf(_ path: String) -> Date? {
+        path.isEmpty ? nil : (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? nil
     }
+    /// Rebuilds when the board or the Focus note changed on disk (a chip switch, Obsidian
+    /// ticking a box). The note is listed through the script only when its mtime moved.
+    func reload(force: Bool) {
+        let bm = mtimeOf(boardPath), fm = mtimeOf(focus.path)
+        let bNew = force || (bm ?? .distantPast) > mtime, fNew = force || (fm ?? .distantPast) != focusMtime   // != : the note appearing or vanishing counts too
+        if !bNew && !fNew { return }
+        if bNew {
+            mtime = bm ?? mtime
+            if let b = loadBoard() { board = b } else if !built { board = Board() } else if !fNew { return }
+        }
+        if fNew { focus = loadFocus(); focusMtime = mtimeOf(focus.path) ?? .distantPast }
+        build()
+    }
+
+    func toggle(_ i: FocusItem) { toggleFocus(i); reload(force: true) }
 
     func build() {
         built = true
@@ -438,10 +618,22 @@ final class Controller: NSObject, NSWindowDelegate {
             let l = NSTextField(labelWithString: board.state == "unknown" ? "No data from Productive yet." : "No bookings this week.")
             l.textColor = dim; l.font = .systemFont(ofSize: 12); l.frame = NSRect(x: pad, y: y, width: innerW, height: 20); fx.addSubview(l); y += 28
         }
-        // A busy week can have more bookings than the screen has room for; the fixed part
-        // (header, bar, columns) stays, the rows give way and the tail becomes "+N more".
-        let room = (NSScreen.screens.first?.visibleFrame.height ?? 800) - 8 - CGFloat(topInset) - (14 + 26 + 14 + 80 + 16 + 276 + 16 + 40)
-        let maxRows = max(3, Int(room / (rowH + 2)))
+        // A busy week can have more bookings or Focus items than the screen has room for. The
+        // fixed part (header, bar, columns) stays; the Upcoming list takes what its items need
+        // up to 45% of what is left, the booking rows get the rest (at least 3), and each tail
+        // becomes "+N more".
+        let fixed: CGFloat = 14 + 26 + 14 + WeekBar.height + 14 + DaysView.height + 16 + 14
+        let left = (NSScreen.screens.first?.visibleFrame.height ?? 800) - 8 - CGFloat(topInset) - fixed
+        var shownUp: [FocusItem] = [], upH: CGFloat = 0
+        let upBudget = max(110, left * 0.45)
+        for i in focus.items {
+            let h = UpcomingView.rowHeight(i.text, width: innerW)
+            if UpcomingView.headH + upH + h + 20 > upBudget && !shownUp.isEmpty { break }
+            shownUp.append(i); upH += h
+        }
+        let moreUp = focus.items.count - shownUp.count
+        let upTotal = UpcomingView.height(of: shownUp, width: innerW, more: moreUp > 0)
+        let maxRows = max(3, Int((left - upTotal) / (rowH + 2)))
         let shown = board.bookings.count > maxRows ? Array(board.bookings.prefix(maxRows - 1)) : board.bookings
         for b in shown {
             let run = board.runningKey == b.key
@@ -454,14 +646,17 @@ final class Controller: NSObject, NSWindowDelegate {
             l.textColor = faint; l.font = .systemFont(ofSize: 11); l.frame = NSRect(x: pad + 16, y: y, width: innerW - 16, height: 18); fx.addSubview(l); y += 22
         }
         y += 14
-        let wb = WeekBar(frame: NSRect(x: pad, y: y, width: innerW, height: 58)); wb.board = board; fx.addSubview(wb); y += 58 + 22
-        let dv = DaysView(frame: NSRect(x: pad, y: y, width: innerW, height: 32 + 200 + 14 + 30)); dv.board = board
+        let wb = WeekBar(frame: NSRect(x: pad, y: y, width: innerW, height: WeekBar.height)); wb.board = board; fx.addSubview(wb); y += WeekBar.height + 14
+        let dv = DaysView(frame: NSRect(x: pad, y: y, width: innerW, height: DaysView.height)); dv.board = board
         fx.addSubview(dv); y += dv.frame.height + 16
+        wb.relayout(); dv.relayout()
+        if let n = testHoverSeg, wb.segs.indices.contains(n) { wb.hits = wb.segs.map { $0.r }; wb.hover = n }
+        if let n = testHoverDay, dv.cols.indices.contains(n) { dv.hoverCol = n }
+        let up = UpcomingView(focus, shown: shownUp, more: moreUp, frame: NSRect(x: pad, y: y, width: innerW, height: upTotal), onToggle: { [weak self] in self?.toggle($0) })
+        fx.addSubview(up); y += upTotal + 16
         var f = panel.frame; let top = f.maxY; f.size = NSSize(width: W, height: y); f.origin.y = top - y
         panel.setFrame(f, display: true)
         fx.frame = NSRect(origin: .zero, size: f.size)
-        // the views were laid out top-down in flipped coordinates; fx is not flipped, so mirror the y
-        fx.subviews.forEach { $0.frame.origin.y = f.height - $0.frame.origin.y - $0.frame.height }
     }
 
     func place() {
@@ -518,6 +713,7 @@ if let out = shotPath {
     // Test seam: render the content to a PNG and quit, so the drawing can be
     // inspected without a screen grab permission.
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        if let n = testToggle, controller.focus.items.indices.contains(n) { controller.toggle(controller.focus.items[n]) }
         let v = controller.fx!
         if let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
             v.cacheDisplay(in: v.bounds, to: rep)

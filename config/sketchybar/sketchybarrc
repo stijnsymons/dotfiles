@@ -411,6 +411,15 @@ for i in 1 2 3 4; do
     --set productive_c$i drawing=off icon.drawing=off \
       label.font="$FONT_TEXT:Bold:11.5" label.color="$FG" \
       label.padding_left=7 label.padding_right=8 \
+      "${card_popup[@]}" \
+      script="$PLUGIN_DIR/productive_chip_hover.sh" \
+    --subscribe productive_c$i mouse.entered mouse.exited mouse.exited.global \
+    --add item productive_ha$i popup.productive_c$i \
+    --set productive_ha$i icon.drawing=off background.drawing=off \
+      label.font="$FONT_TEXT:Bold:12.0" label.color="$FG" label.padding_left=12 label.padding_right=14 \
+    --add item productive_hb$i popup.productive_c$i \
+    --set productive_hb$i icon.drawing=off background.drawing=off \
+      label.font="$FONT_TEXT:Regular:12.0" label.color="$FG_DIM" label.padding_left=12 label.padding_right=14 \
     --add bracket productive_b$i productive_s$i productive_c$i \
     --set productive_b$i drawing=off \
       background.color=0xff16161e background.corner_radius=4 background.height=22
