@@ -5,10 +5,11 @@
 # but any heading works, so the same engine drives "Upcoming", "Actions" and
 # "Past actions" (the renderers call it once per section).
 #
-#   focus_upcoming.sh [section]                     print {week,path,section,missing,items:[{line,checked,text,raw}]}
-#   focus_upcoming.sh toggle <line> <raw> [section] flip [ ] <-> [x] on that item, print the new state
+#   focus_upcoming.sh [section] [week]                     print {week,path,section,missing,items:[...]}
+#   focus_upcoming.sh toggle <line> <raw> [section] [week] flip [ ] <-> [x] on that item
 #
 #   section  heading title (default "Upcoming"), matched at any level, case-insensitive
+#   week     YYYY-Www (default: this week, or $FOCUS_WEEK) - the switcher passes other weeks here
 #   line     1-based file line number (what the UI got from the listing)
 #   raw      the line exactly as listed, minus the line ending; also the staleness check
 #   missing  null | "note" | "section" - UI shows "No Focus note for <week>" when set
@@ -27,7 +28,10 @@
 # next heading. Exit codes of toggle: 0 toggled, 1 stale/ambiguous/missing, 2 usage.
 
 set -u
-WEEK="${FOCUS_WEEK:-$(date +%G-W%V)}"
+# A positional week (2nd arg when listing, 5th when toggling) overrides $FOCUS_WEEK;
+# the week switcher passes it so the whole note points at the chosen week.
+if [ "${1:-}" = toggle ]; then WEEK_ARG="${5:-}"; else WEEK_ARG="${2:-}"; fi
+WEEK="${WEEK_ARG:-${FOCUS_WEEK:-$(date +%G-W%V)}}"
 DIR="${FOCUS_DIR:-$HOME/Library/CloudStorage/GoogleDrive-ssymons@gmail.com/My Drive/Thoughts/Notes}"
 NOTE="${FOCUS_NOTE:-$DIR/$WEEK.md}"
 
@@ -43,7 +47,7 @@ items() {
 }
 
 if [ "${1:-}" = toggle ]; then
-  { [ $# -eq 3 ] || [ $# -eq 4 ]; } || { echo "usage: $0 toggle <line> <raw> [section]" >&2; exit 2; }
+  { [ $# -ge 3 ] && [ $# -le 5 ]; } || { echo "usage: $0 toggle <line> <raw> [section] [week]" >&2; exit 2; }
   SECTION="${4:-${FOCUS_SECTION:-Upcoming}}"
   [ -f "$NOTE" ] || exit 1
   TMP="$(mktemp "$NOTE.XXXXXX")" || exit 1

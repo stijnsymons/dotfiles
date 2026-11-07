@@ -26,9 +26,21 @@ import { exec, readTextFile, home, props, run, notify } from "herdr";
 
 const POLL_MS = 30000;          // the board is rebuilt every 60s upstream; no point reading faster
 const STALE_S = 600;            // a board older than this means sketchybar stopped: show "no data", not old truth
+const SKETCHY = `${home()}/.config/sketchybar`;                // CONFIG_DIR for the scripts (colors.sh repairs PATH)
+const SB_CACHE = `${home()}/.cache/sketchybar`;
 const SWITCH = `${home()}/dotfiles/config/sketchybar/plugins/productive_switch.sh`;
 const UPCOMING = `${home()}/dotfiles/config/sketchybar/plugins/focus_upcoming.sh`;
-const BOARD = `${home()}/.cache/sketchybar/productive-board.json`;
+const BOARD_SH = `${home()}/dotfiles/config/sketchybar/plugins/productive_board.sh`;
+const BOARD = `${SB_CACHE}/productive-board.json`;
+// ISO-8601 week id (YYYY-Www) for this week plus `offset` weeks; the switcher's week.
+const weekId = (offset) => {
+  const d = new Date(); d.setDate(d.getDate() + offset * 7);
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);   // the week's Thursday
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const wk = 1 + Math.round(((t - firstThu) / 864e5 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  return `${t.getUTCFullYear()}-W${String(wk).padStart(2, "0")}`;
+};
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // The Focus-note checklist sections, each [heading title (matches the note), display label].
 // focus_upcoming.sh lists and toggles one section at a time; the three together are the panel's
@@ -90,25 +102,45 @@ export default class ProductiveTimer extends View {
     this.hovDay = null;         // day date under the pointer in the day columns
     this.foc = {};              // section title -> focus_upcoming.sh listing; only the panel shows these
     this.upBusy = false;
+    this.weekOffset = 0;        // 0 this week, -1 last week, +1 next; the panel's < > switcher
+    this.navBusy = false;       // a week jump is fetching its board
     cx.timer.every(POLL_MS, (cx) => { this.load(cx); this.loadUp(cx); });
     cx.spawn((cx) => { this.load(cx); this.loadUp(cx); });
   }
 
   async load(cx) {
     try {
-      const text = await readTextFile(props()?.board ?? BOARD);
-      this.board = text ? JSON.parse(text) : null;
+      if (this.weekOffset === 0) {
+        const text = await readTextFile(props()?.board ?? BOARD);
+        this.board = text ? JSON.parse(text) : null;
+      } else {
+        // Another week: build it (entries refetched from Productive, then cached per week).
+        const r = await exec("env", [`CONFIG_DIR=${SKETCHY}`, `SB_CACHE_DIR=${SB_CACHE}`, "bash", BOARD_SH, "--week", String(this.weekOffset)]);
+        this.board = r.code === 0 ? JSON.parse(r.stdout) : null;
+      }
     } catch (_e) {
       this.board = null;      // half-written or missing: the sketchybar writer renames atomically, so this is "no data"
     }
     cx.notify();
   }
 
-  // One section's listing. The script always exits 0 with JSON; anything else is "unknown",
-  // kept as the last listing so a transient failure does not blank the column.
+  // Jump weeks: move the offset, then refetch both the board and the Focus sections for it.
+  navigate(delta, cx) {
+    if (this.navBusy) return;
+    this.weekOffset += delta;
+    this.navBusy = true; this.board = null; this.foc = {};
+    cx.notify();
+    cx.spawn(async (cx) => {
+      await Promise.all([this.load(cx), this.loadUp(cx)]);
+      this.navBusy = false; cx.notify();
+    });
+  }
+
+  // One section's listing for the current offset's week. The script always exits 0 with JSON;
+  // anything else is "unknown", kept as the last listing so a transient failure does not blank it.
   async loadSection(section, cx) {
     try {
-      const r = await exec("bash", [UPCOMING, section]);
+      const r = await exec("bash", [UPCOMING, section, weekId(this.weekOffset)]);
       this.foc[section] = JSON.parse(r.stdout);
     } catch (_e) { /* keep the last listing */ }
     if (cx) cx.notify();
@@ -129,7 +161,7 @@ export default class ProductiveTimer extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       let r;
-      try { r = await exec("bash", [UPCOMING, "toggle", String(it.line), it.raw, section]); } catch (e) { r = { code: 1, stderr: String(e) }; }
+      try { r = await exec("bash", [UPCOMING, "toggle", String(it.line), it.raw, section, weekId(this.weekOffset)]); } catch (e) { r = { code: 1, stderr: String(e) }; }
       if (r.code !== 0) notify({ title: "Could not tick the Focus item", body: (r.stderr || "The note changed under it. Reloaded.").trim().split("\n").pop(), level: "warning" });
       await this.loadSection(section, cx);
       this.upBusy = false;
@@ -293,14 +325,39 @@ export default class ProductiveTimer extends View {
       .children(SECTIONS.map(([s, l]) => this.renderSection(t, s, l)));
   }
 
+  // The < WEEK n · range > switcher: the arrows jump weeks, the label names the shown week. Built
+  // outside the board guard so it stays visible (and clickable) while a week's board is loading.
+  navHeader(t) {
+    const b = this.board, st = this.state();
+    const no = (b?.week || weekId(this.weekOffset)).split("W")[1] ?? "";
+    let range = "";
+    if (b?.from && b?.to) {
+      const [f, to] = [new Date(`${b.from}T00:00`), new Date(`${b.to}T00:00`)];
+      range = f.getMonth() === to.getMonth() ? `${f.getDate()}–${to.getDate()} ${MONTHS[to.getMonth()]}` : `${f.getDate()} ${MONTHS[f.getMonth()]} – ${to.getDate()} ${MONTHS[to.getMonth()]}`;
+    }
+    const arrow = (glyph, delta) => div().id(`nav${delta}`).px(5).rounded(4).cursor_pointer().text_color(t.muted)
+      .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => this.navigate(delta, cx)).child(glyph);
+    const status = this.navBusy ? "LOADING…" : this.weekOffset === 0 ? (st === "unknown" ? "NO LIVE DATA" : "PRODUCTIVE") : "OTHER WEEK";
+    return h_flex().justify_between().items_center().text_size(11).text_color(t.dim)
+      .child(h_flex().gap(2).items_center()
+        .child(arrow("‹", -1))
+        .child(div().child(`WEEK ${no}${range ? ` · ${range}` : ""}`.toUpperCase()))
+        .child(arrow("›", 1)))
+      .child(div().child(status));
+  }
+
   renderPanel() {
     const t = TN;
     const b = this.board;
     const st = this.state();
     const green = t.ansi2, red = t.ansi1, amber = t.ansi3;
     const body = v_flex().id("panel").size_full().overflow_hidden().p(16).gap(12).text_size(12).bg(t.background).text_color(t.foreground);
-    if (!b || !b.bookings || !b.days) { // a board without days is as unusable as none: days.filter below would throw
-      return body.items_center().justify_center().text_color(t.dim).child(b ? "No bookings this week" : "No timer data yet. The sketchybar board has not been written.");
+    if (this.navBusy || !b || !b.bookings || !b.days) { // loading a week, or a board without days (days.filter below would throw)
+      const msg = this.navBusy ? `Loading week ${(b?.week || weekId(this.weekOffset)).split("W")[1] ?? ""}…`
+        : (b ? "No bookings this week" : "No timer data yet. The sketchybar board has not been written.");
+      return body.child(this.navHeader(t))
+        .child(v_flex().flex_none().py(24).items_center().text_color(t.dim).child(msg))
+        .child(this.renderFocus(t));
     }
     const add = st === "running" ? this.ageMin() : 0;
     const runKey = st === "running" ? b.running?.key : null;
@@ -311,8 +368,6 @@ export default class ProductiveTimer extends View {
     const over = Math.max(0, total - target);
     const domain = Math.max(target, Math.ceil(total / 300) * 300);
     const pct = (m) => `${(m / domain * 100).toFixed(2)}%`;
-    const [f, to] = [new Date(`${b.from}T00:00`), new Date(`${b.to}T00:00`)];
-    const range = f.getMonth() === to.getMonth() ? `${f.getDate()}–${to.getDate()} ${MONTHS[to.getMonth()]}` : `${f.getDate()} ${MONTHS[f.getMonth()]} – ${to.getDate()} ${MONTHS[to.getMonth()]}`;
     // A fixed-height block, so hovering never shifts the layout: title line + dim detail line.
     const detail = (hov) => v_flex().h(32).flex_none().justify_center().gap(1).px(10).rounded(5).bg(t.surface).text_size(10.5).overflow_hidden()
       .child(div().truncate().whitespace_nowrap().font_semibold().text_color(hov ? t.foreground : t.dim).child(hov ? hov[0] : "Hover for details"))
@@ -422,9 +477,7 @@ export default class ProductiveTimer extends View {
         .children(ticks.map((h) => div().absolute().top(y(h) - 6).right(0).text_size(9.5).text_color(t.dim).child(`${pad(h)}:00`))))
       .children(cols);
 
-    const header = h_flex().justify_between().text_size(11).text_color(t.dim)
-      .child(div().child(`WEEK ${(b.week || "").split("W")[1] ?? ""} · ${range}`.toUpperCase()))
-      .child(div().child(st === "unknown" ? "NO LIVE DATA" : "PRODUCTIVE"));
+    const header = this.navHeader(t);
     const rowsBlock = v_flex().id("rows").gap(2).max_h(170).flex_none().overflow_y_scrollbar().children(rows);
     const weekBlock = v_flex().gap(8)
       .child(label("This week", h_flex().gap(4)

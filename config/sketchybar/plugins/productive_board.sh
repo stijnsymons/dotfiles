@@ -252,8 +252,60 @@ BOARDEOF
     '.bookings |= map(. + $meta[.key])'
 }
 
+# --- a past/future week, for the panel's week switcher -------------------------
+# <offset> in weeks from this one (0 this week, -1 last week, +1 next). Builds the
+# board for that week and prints it; caches non-current weeks (their entries no
+# longer change) for TTL. The plan and booked minutes are this-week caches, so the
+# BOARD_JQ guard leaves them empty on other weeks: tracked hours and day start/end
+# (from the local activity log) are what another week shows. No running timer there,
+# so state is forced "idle" - "unknown" would make the panel cry "no data".
+build_week() {
+  local off="$1" step mon sun today end weekid wc out
+  if [ "$off" -lt 0 ]; then step="-v-$(( -off ))w"; else step="-v+${off}w"; fi
+  mon="$(date -v-mon $step +%F)"
+  sun="$(date -j -v+6d -f %F "$mon" +%F)"
+  today="$(date +%F)"
+  weekid="$(date -j -f %F "$mon" +%G-W%V)"
+  # end of the fetch window: the week's Sunday, clamped to today for a week in progress.
+  if [ "$sun" \> "$today" ]; then end="$today"; else end="$sun"; fi
+
+  if [ "$off" = 0 ]; then
+    [ -s "$CACHE" ] && [ "$(jq -r '.week//""' "$CACHE" 2>/dev/null)" = "$weekid" ] && { cat "$CACHE"; return 0; }
+  else
+    wc="$SB_CACHE_DIR/productive-board-$weekid.json"
+    [ -s "$wc" ] && [ "$(( $(date +%s) - $(stat -f %m "$wc") ))" -lt "$TTL" ] && { cat "$wc"; return 0; }
+  fi
+
+  productive_creds || true
+  local E='[]' U='[]' IDS S
+  if [ ! "$mon" \> "$today" ]; then   # a future week has no entries to fetch
+    E="$(productive entries --from "$mon" --to "$end" 2>/dev/null)"
+    printf '%s' "$E" | jq -e 'type == "array"' >/dev/null 2>&1 || E='[]'
+    IDS="$(printf '%s' "$E" | jq -r '[.[]?.service_id | select(. != null)] | unique | join(",")')"
+    if [ -n "$IDS" ]; then
+      S="$(productive_api GET "services?filter%5Bid%5D=${IDS}&include=deal.project&page%5Bsize%5D=200")"
+      printf '%s' "$S" | jq -e '.data' >/dev/null 2>&1 \
+        && U="$("$CONFIG_DIR/plugins/productive_plan.sh" --usage <(printf '%s' "$E") <(printf '%s' "$S"))" || U='[]'
+      printf '%s' "$U" | jq -e 'type == "array"' >/dev/null 2>&1 || U='[]'
+    fi
+  fi
+
+  ENTRIES="$E"; USAGE="$U"
+  TIMER='{"running":false}'; AGE=0                 # no live timer on another week -> state "idle", not "unknown"
+  PLAN="$(cat "${PRODUCTIVE_PLAN_CACHE:-$SB_CACHE_DIR/productive-plan.json}" 2>/dev/null)"
+  printf '%s' "$PLAN" | jq -e 'type == "array"' >/dev/null 2>&1 || PLAN='[]'
+  WEEK="$(cat "${PRODUCTIVE_WEEK_CACHE:-$SB_CACHE_DIR/productive-week.json}" 2>/dev/null)"
+  printf '%s' "$WEEK" | jq -e 'type == "object"' >/dev/null 2>&1 || WEEK='{}'
+  ACT="$(board_activity "$mon")"
+  MON="$mon"; TODAY="$end"; NOW="$(date +%Y-%m-%dT%H:%M:%S)"; LIVE=0
+  out="$(board_make)" || return 1
+  if [ "$off" != 0 ]; then printf '%s' "$out" > "$wc.tmp.$$" && mv "$wc.tmp.$$" "$wc" || rm -f "$wc.tmp.$$"; fi
+  printf '%s' "$out"
+}
+
 case "${1:-}" in
   --code) pick_code "${2:-}" "${3:-}" "${4:-}"; echo; exit 0 ;;
+  --week) build_week "${2:-0}"; exit $? ;;
   --build)
     D="${2:?--build needs a fixture dir}"; TODAY="${3:?--build needs today}"; MON="${4:?--build needs the monday}"
     ENTRIES="$(cat "$D/entries.json")"; USAGE="$(cat "$D/usage.json")"; PLAN="$(cat "$D/plan.json")"

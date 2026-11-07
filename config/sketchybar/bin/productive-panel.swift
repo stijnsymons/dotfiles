@@ -33,7 +33,7 @@ var boardPath = ProcessInfo.processInfo.environment["PRODUCTIVE_BOARD"] ?? ""
 var topInset: CGFloat = 36
 var anchorX: CGFloat = 12
 var shotPath: String? = nil
-var testHoverSeg: Int? = nil, testHoverDay: Int? = nil, testToggle: Int? = nil
+var testHoverSeg: Int? = nil, testHoverDay: Int? = nil, testToggle: Int? = nil, startOffset = 0
 do {
     let a = CommandLine.arguments
     var i = 1
@@ -46,6 +46,7 @@ do {
         case "--hover-seg": testHoverSeg = Int(v ?? "")
         case "--hover-day": testHoverDay = Int(v ?? "")
         case "--toggle-item": testToggle = Int(v ?? "")
+        case "--offset": startOffset = Int(v ?? "") ?? 0
         case "--screenshot": shotPath = v
         default: i -= 1
         }
@@ -93,8 +94,26 @@ struct Board {
     func booking(_ k: String) -> Booking? { bookings.first { $0.key == k } }
 }
 func loadBoard() -> Board? {
-    guard let raw = FileManager.default.contents(atPath: boardPath),
-          let j = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] else { return nil }
+    guard let raw = FileManager.default.contents(atPath: boardPath) else { return nil }
+    return parseBoard(raw)
+}
+// Build and parse the board for this week + offset (0 = the live cache). For other weeks this
+// runs productive_board.sh --week, which refetches that week's entries, so call it OFF the main
+// thread (the panel's navigate() does). Returns nil on a failed build.
+func loadBoardWeek(_ offset: Int) -> Board? {
+    if offset == 0 { return loadBoard() }
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
+    p.arguments = [configDir + "/plugins/productive_board.sh", "--week", String(offset)]
+    var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir
+    if env["SB_CACHE_DIR"] == nil { env["SB_CACHE_DIR"] = NSHomeDirectory() + "/.cache/sketchybar" }
+    p.environment = env
+    let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
+    guard (try? p.run()) != nil else { return nil }
+    let data = out.fileHandleForReading.readDataToEndOfFile(); p.waitUntilExit()
+    return parseBoard(data)
+}
+func parseBoard(_ raw: Data) -> Board? {
+    guard let j = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] else { return nil }
     var b = Board()
     b.week = j["week"] as? String ?? ""; b.from = j["from"] as? String ?? ""; b.to = j["to"] as? String ?? ""
     b.generatedAt = j["generated_at"] as? String ?? ""; b.state = j["state"] as? String ?? "unknown"
@@ -126,6 +145,13 @@ func fmtHM(_ m: Int) -> String { m >= 60 ? String(format: "%dh%02dm", m / 60, m 
 func clock(_ s: String) -> Double {
     let p = s.split(separator: ":").compactMap { Double($0) }
     return p.count == 2 ? p[0] + p[1] / 60 : 0
+}
+// ISO-8601 week id (YYYY-Www) for this week plus `offset` weeks: the switcher's chosen week,
+// used as FOCUS_WEEK so the checklist sections follow the same week as the board.
+func weekId(offset: Int) -> String {
+    var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+    let d = cal.date(byAdding: .weekOfYear, value: offset, to: Date()) ?? Date()
+    return String(format: "%d-W%02d", cal.component(.yearForWeekOfYear, from: d), cal.component(.weekOfYear, from: d))
 }
 func weekTitle(_ b: Board) -> String {
     let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
@@ -457,9 +483,9 @@ final class DaysView: HoverView {
 let FOCUS_SECTIONS: [(key: String, label: String)] = [("Upcoming", "UPCOMING"), ("Actions", "ACTIONS"), ("Past actions", "PAST ACTIONS")]
 struct FocusItem { let line: Int; let checked: Bool; let text, raw: String }
 struct Focus { var week = "", path = ""; var missing: String? = "note"; var items: [FocusItem] = [] }
-func loadFocus(_ section: String = "Upcoming") -> Focus {
+func loadFocus(_ section: String = "Upcoming", week: String = "") -> Focus {
     let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
-    p.arguments = [configDir + "/plugins/focus_upcoming.sh", section]
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh", section, week]
     var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
     let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice; p.standardInput = FileHandle.nullDevice
     guard (try? p.run()) != nil else { return Focus() }
@@ -473,9 +499,9 @@ func loadFocus(_ section: String = "Upcoming") -> Focus {
     return f
 }
 /// Runs the toggle and waits (it is a temp file and a rename, a few ms); the caller reloads.
-func toggleFocus(_ i: FocusItem, section: String) {
+func toggleFocus(_ i: FocusItem, section: String, week: String) {
     let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/bash")
-    p.arguments = [configDir + "/plugins/focus_upcoming.sh", "toggle", String(i.line), i.raw, section]
+    p.arguments = [configDir + "/plugins/focus_upcoming.sh", "toggle", String(i.line), i.raw, section, week]
     var env = ProcessInfo.processInfo.environment; env["CONFIG_DIR"] = configDir; p.environment = env
     p.standardInput = FileHandle.nullDevice; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
     try? p.run(); p.waitUntilExit()
@@ -554,6 +580,7 @@ final class Controller: NSObject, NSWindowDelegate {
     var fx: Root!
     var board = Board(), focus: [String: Focus] = [:]   // section title -> listing
     var mtime = Date.distantPast, focusMtime = Date.distantPast
+    var weekOffset = 0, navBusy = false                 // the < > switcher: 0 this week, -1 last, +1 next
     var notePath: String { focus["Upcoming"]?.path ?? "" }   // all sections read the same note
     var closing = false, built = false
     var clickMonitor: Any?
@@ -569,6 +596,7 @@ final class Controller: NSObject, NSWindowDelegate {
         fx.wantsLayer = true; fx.layer?.backgroundColor = bg.cgColor; fx.layer?.cornerRadius = 14; fx.layer?.masksToBounds = true
         fx.layer?.borderWidth = 1; fx.layer?.borderColor = sep.cgColor
         panel.contentView = fx
+        weekOffset = startOffset
         reload(force: true)
         place()
         panel.alphaValue = 0
@@ -595,62 +623,102 @@ final class Controller: NSObject, NSWindowDelegate {
     func mtimeOf(_ path: String) -> Date? {
         path.isEmpty ? nil : (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date) ?? nil
     }
-    /// Rebuilds when the board or the Focus note changed on disk (a chip switch, Obsidian
-    /// ticking a box). The note is listed through the script only when its mtime moved.
+    /// All three Focus sections for the currently shown week (offset -> FOCUS_WEEK).
+    func loadFocusAll() {
+        let wk = weekId(offset: weekOffset)
+        var f: [String: Focus] = [:]
+        for s in FOCUS_SECTIONS { f[s.key] = loadFocus(s.key, week: wk) }
+        focus = f; focusMtime = mtimeOf(notePath) ?? .distantPast
+    }
+    /// Rebuilds when the board or the Focus note changed on disk (a chip switch, Obsidian ticking a
+    /// box). On another week the board is static (loaded once, forced or still empty); only its note
+    /// is watched. Skipped entirely while a week jump is mid-flight, so the 2s tick can't race it.
     func reload(force: Bool) {
-        let bm = mtimeOf(boardPath), fm = mtimeOf(notePath)
-        let bNew = force || (bm ?? .distantPast) > mtime, fNew = force || (fm ?? .distantPast) != focusMtime   // != : the note appearing or vanishing counts too
-        if !bNew && !fNew { return }
-        if bNew {
-            mtime = bm ?? mtime
-            if let b = loadBoard() { board = b } else if !built { board = Board() } else if !fNew { return }
+        if navBusy { return }
+        let fm = mtimeOf(notePath), fNew = force || (fm ?? .distantPast) != focusMtime   // != : the note appearing or vanishing counts too
+        if weekOffset == 0 {
+            let bm = mtimeOf(boardPath), bNew = force || (bm ?? .distantPast) > mtime
+            if !bNew && !fNew { return }
+            if bNew { mtime = bm ?? mtime; if let b = loadBoard() { board = b } else if !built { board = Board() } else if !fNew { return } }
+        } else {
+            if force || board.bookings.isEmpty { board = loadBoardWeek(weekOffset) ?? Board() }
+            else if !fNew { return }
         }
-        if fNew {
-            var f: [String: Focus] = [:]
-            for s in FOCUS_SECTIONS { f[s.key] = loadFocus(s.key) }
-            focus = f; focusMtime = mtimeOf(notePath) ?? .distantPast
-        }
+        if fNew { loadFocusAll() }
         build()
     }
 
-    func toggle(_ i: FocusItem, section: String) { toggleFocus(i, section: section); reload(force: true) }
+    /// The < > switcher. Focus is local and loads now; the board for another week is a refetch, so
+    /// it runs off the main thread with a LOADING state, and a later jump supersedes an older one.
+    func navigate(_ delta: Int) {
+        if navBusy { return }
+        weekOffset += delta
+        loadFocusAll()
+        if weekOffset == 0 {
+            board = loadBoard() ?? Board(); build()
+        } else {
+            navBusy = true; board = Board(); build()
+            let off = weekOffset
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let b = loadBoardWeek(off)
+                DispatchQueue.main.async {
+                    guard let self = self, off == self.weekOffset else { return }
+                    self.board = b ?? Board(); self.navBusy = false; self.build()
+                }
+            }
+        }
+    }
+
+    func toggle(_ i: FocusItem, section: String) { toggleFocus(i, section: section, week: weekId(offset: weekOffset)); reload(force: true) }
 
     func build() {
         built = true
         fx.subviews.forEach { $0.removeFromSuperview() }
         let rowH: CGFloat = 30, innerW = leftW, rightX = pad + leftW + colGap
         var y: CGFloat = 14
-        let head = HeaderView(frame: NSRect(x: pad, y: y, width: innerW, height: 16)); head.title = weekTitle(board)
+        let wkNo = weekId(offset: weekOffset).split(separator: "W").last.map(String.init) ?? ""
+        let head = NavHeaderView(frame: NSRect(x: pad, y: y, width: innerW, height: 16),
+            title: board.week.isEmpty ? "Week \(wkNo)" : weekTitle(board),
+            status: navBusy ? "LOADING…" : (weekOffset == 0 ? (board.state == "unknown" ? "NO LIVE DATA" : "PRODUCTIVE") : "OTHER WEEK"),
+            onPrev: { [weak self] in self?.navigate(-1) }, onNext: { [weak self] in self?.navigate(1) })
         fx.addSubview(head); y += 26
-        if board.state == "unknown" || board.bookings.isEmpty {
-            let l = NSTextField(labelWithString: board.state == "unknown" ? "No data from Productive yet." : "No bookings this week.")
-            l.textColor = dim; l.font = .systemFont(ofSize: 12); l.frame = NSRect(x: pad, y: y, width: innerW, height: 20); fx.addSubview(l); y += 28
-        }
-        // Two columns. The left (timer) keeps its fixed parts (header, week bar, day columns) and gives
-        // the booking rows the rest of the screen height, a tail becoming "+N more". The right column
-        // stacks the three Focus checklists, each trimmed to "+N more" as the shared budget runs out.
+
+        // Two columns. The right one (the Focus checklists) is built below regardless; the left one is
+        // a one-line "loading" while a week jump fetches, otherwise the timer: bookings get the screen
+        // height left after the fixed week bar and day columns, a tail becoming "+N more".
         let avail = (NSScreen.screens.first?.visibleFrame.height ?? 800) - 8 - CGFloat(topInset)
-        let fixedLeft: CGFloat = 14 + 26 + 14 + WeekBar.height + 14 + DaysView.height + 16 + 14
-        let maxRows = max(3, Int((avail - fixedLeft) / (rowH + 2)))
-        let shown = board.bookings.count > maxRows ? Array(board.bookings.prefix(maxRows - 1)) : board.bookings
-        for b in shown {
-            let run = board.runningKey == b.key
-            let r = RowView(b, running: run, elapsed: run ? board.runningMin : 0,
-                            frame: NSRect(x: pad, y: y, width: innerW, height: rowH), onSwitch: { [weak self] in self?.switchTo($0) })
-            fx.addSubview(r); y += rowH + 2
+        let leftBottom: CGFloat
+        if navBusy {
+            let l = NSTextField(labelWithString: "Loading week \(wkNo)…")
+            l.textColor = dim; l.font = .systemFont(ofSize: 12); l.frame = NSRect(x: pad, y: y, width: innerW, height: 20); fx.addSubview(l)
+            leftBottom = y + 24
+        } else {
+            if board.state == "unknown" || board.bookings.isEmpty {
+                let l = NSTextField(labelWithString: weekOffset == 0 && board.state == "unknown" ? "No data from Productive yet." : "No bookings this week.")
+                l.textColor = dim; l.font = .systemFont(ofSize: 12); l.frame = NSRect(x: pad, y: y, width: innerW, height: 20); fx.addSubview(l); y += 28
+            }
+            let fixedLeft: CGFloat = 14 + 26 + 14 + WeekBar.height + 14 + DaysView.height + 16 + 14
+            let maxRows = max(3, Int((avail - fixedLeft) / (rowH + 2)))
+            let shown = board.bookings.count > maxRows ? Array(board.bookings.prefix(maxRows - 1)) : board.bookings
+            for b in shown {
+                let run = board.runningKey == b.key
+                let r = RowView(b, running: run, elapsed: run ? board.runningMin : 0,
+                                frame: NSRect(x: pad, y: y, width: innerW, height: rowH), onSwitch: { [weak self] in self?.switchTo($0) })
+                fx.addSubview(r); y += rowH + 2
+            }
+            if shown.count < board.bookings.count {
+                let l = NSTextField(labelWithString: "+\(board.bookings.count - shown.count) more, quieter this week")
+                l.textColor = faint; l.font = .systemFont(ofSize: 11); l.frame = NSRect(x: pad + 16, y: y, width: innerW - 16, height: 18); fx.addSubview(l); y += 22
+            }
+            y += 14
+            let wb = WeekBar(frame: NSRect(x: pad, y: y, width: innerW, height: WeekBar.height)); wb.board = board; fx.addSubview(wb); y += WeekBar.height + 14
+            let dv = DaysView(frame: NSRect(x: pad, y: y, width: innerW, height: DaysView.height)); dv.board = board
+            fx.addSubview(dv); y += dv.frame.height + 16
+            wb.relayout(); dv.relayout()
+            if let n = testHoverSeg, wb.segs.indices.contains(n) { wb.hits = wb.segs.map { $0.r }; wb.hover = n }
+            if let n = testHoverDay, dv.cols.indices.contains(n) { dv.hoverCol = n }
+            leftBottom = y
         }
-        if shown.count < board.bookings.count {
-            let l = NSTextField(labelWithString: "+\(board.bookings.count - shown.count) more, quieter this week")
-            l.textColor = faint; l.font = .systemFont(ofSize: 11); l.frame = NSRect(x: pad + 16, y: y, width: innerW - 16, height: 18); fx.addSubview(l); y += 22
-        }
-        y += 14
-        let wb = WeekBar(frame: NSRect(x: pad, y: y, width: innerW, height: WeekBar.height)); wb.board = board; fx.addSubview(wb); y += WeekBar.height + 14
-        let dv = DaysView(frame: NSRect(x: pad, y: y, width: innerW, height: DaysView.height)); dv.board = board
-        fx.addSubview(dv); y += dv.frame.height + 16
-        wb.relayout(); dv.relayout()
-        if let n = testHoverSeg, wb.segs.indices.contains(n) { wb.hits = wb.segs.map { $0.r }; wb.hover = n }
-        if let n = testHoverDay, dv.cols.indices.contains(n) { dv.hoverCol = n }
-        let leftBottom = y
 
         // Right column: FOCUS header, then Upcoming / Actions / Past actions.
         var yR: CGFloat = 14
@@ -716,12 +784,32 @@ final class Controller: NSObject, NSWindowDelegate {
     }
 }
 
-final class HeaderView: NSView {
+// The panel's top line: ‹ WEEK n · range › on the left (the arrows jump weeks), a status word on
+// the right. Only the two chevrons are hit targets; the title between them is inert.
+final class NavHeaderView: NSView {
     override var isFlipped: Bool { true }
-    var title = ""
+    let title: String, status: String, titleW: CGFloat, onPrev: () -> Void, onNext: () -> Void
+    var prevR = NSRect.zero, nextR = NSRect.zero
+    var hover = 0 { didSet { if oldValue != hover { needsDisplay = true } } }   // 0 none, 1 prev, 2 next
+    static let arrow = NSFont.systemFont(ofSize: 15, weight: .medium)
+    init(frame: NSRect, title: String, status: String, onPrev: @escaping () -> Void, onNext: @escaping () -> Void) {
+        self.title = title; self.status = status; self.onPrev = onPrev; self.onNext = onNext
+        titleW = (title.uppercased() as NSString).size(withAttributes: [.font: capsFont, .kern: 0.8]).width + 6
+        super.init(frame: frame)
+        prevR = NSRect(x: 0, y: -3, width: 16, height: 20)
+        nextR = NSRect(x: 20 + titleW + 4, y: -3, width: 16, height: 20)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func hit(_ e: NSEvent) -> Int { let p = convert(e.locationInWindow, from: nil); return prevR.contains(p) ? 1 : nextR.contains(p) ? 2 : 0 }
+    override func mouseMoved(with e: NSEvent) { hover = hit(e) }
+    override func mouseExited(with e: NSEvent) { hover = 0 }
+    override func mouseDown(with e: NSEvent) { let h = hit(e); if h == 1 { onPrev() } else if h == 2 { onNext() } }
     override func draw(_ r: NSRect) {
-        text(title.uppercased(), capsFont, dim, in: NSRect(x: 0, y: 0, width: bounds.width - 90, height: 14), kern: 0.8)
-        text("PRODUCTIVE", capsFont, faint, in: NSRect(x: bounds.width - 90, y: 0, width: 90, height: 14), align: .right, kern: 0.8)
+        text("‹", Self.arrow, hover == 1 ? fg : dim, in: prevR.offsetBy(dx: 0, dy: 1), align: .center)
+        text(title.uppercased(), capsFont, dim, in: NSRect(x: 20, y: 1, width: titleW, height: 14), kern: 0.8)
+        text("›", Self.arrow, hover == 2 ? fg : dim, in: nextR.offsetBy(dx: 0, dy: 1), align: .center)
+        text(status, capsFont, faint, in: NSRect(x: bounds.width - 120, y: 1, width: 120, height: 14), align: .right, kern: 0.8)
     }
 }
 
