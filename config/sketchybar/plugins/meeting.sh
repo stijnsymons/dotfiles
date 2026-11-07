@@ -37,9 +37,16 @@ source "$CONFIG_DIR/plugins/fit.sh"
 source "$CONFIG_DIR/plugins/meeting_lib.sh"
 source "$CONFIG_DIR/plugins/meeting_fetch.sh"
 
-# Keep exactly what the Productive item next door currently needs, plus the
-# divider - no more, so the meeting title gets every remaining pixel.
-FIT_RESERVE="$(fit_reserve_for productive)"
+# Keep exactly what the Productive widget next door currently needs - the anchor,
+# its overtime suffix and the visible chips - plus the divider, no more, so the
+# meeting title gets every remaining pixel. Each call adds its own +10 slack;
+# hidden items measure 0 + 10, which over-reserves a little and never under.
+FIT_RESERVE=0
+for _p in productive productive_ot productive_c1 productive_c2 productive_c3 productive_c4; do
+  FIT_RESERVE=$(( FIT_RESERVE + $(fit_reserve_for "$_p") ))
+done
+# Chips also carry a stripe (3pt + padding) the code item's width does not include.
+FIT_RESERVE=$(( FIT_RESERVE + 4 * 8 ))
 
 ITEM="${NAME:-meeting}"
 CACHE="${MEETING_CACHE:-$SB_CACHE_DIR/meeting.json}"

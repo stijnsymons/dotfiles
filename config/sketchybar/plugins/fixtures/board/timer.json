@@ -1,0 +1,15 @@
+{
+ "running": true,
+ "timer_id": "t1",
+ "time_entry_id": "5999",
+ "started_at": "2026-11-07T14:51:02.000+01:00",
+ "run_minutes": 58,
+ "elapsed_minutes": 72,
+ "elapsed": "1h12m",
+ "project": "vbrb-0001-medical-costs-platform",
+ "budget": "feature-flags",
+ "service": "Senior Architect",
+ "service_id": "1001",
+ "task": "",
+ "note": ""
+}

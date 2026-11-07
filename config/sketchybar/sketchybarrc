@@ -369,19 +369,52 @@ sketchybar --add item meeting left \
 # dangling against the front_app separator.
 sketchybar --add item sep.timing left --set sep.timing "${separator[@]}"
 
-# Productive.io timer. Red when nothing is being timed -- that is the whole
-# point of the item, so it must never be mistaken for a quiet success state.
-# Also network-bound: update_freq=60, cached, click always opens the timesheet.
+# Productive.io timer widget: an ANCHOR (state glyph + elapsed time; the red
+# alarm when nothing is being timed -- the whole point of the item, so it must
+# never be mistaken for a quiet success state), an amber overtime suffix, and
+# four CHIPS, one booking each, that switch the timer in one click. Clicking the
+# anchor opens the native panel (bin/productive-panel) under it; the chips, the
+# panel and the herdr.app mod all read the one board file productive_board.sh
+# writes. Network-bound: update_freq=60, cached.
 sketchybar --add item productive left \
   --set productive update_freq=60 \
   label.color="$FG" \
   label.font="$FONT_TEXT:Regular:13.0" \
+  background.corner_radius=5 \
+  background.height=24 \
+  padding_right=4 \
   script="$PLUGIN_DIR/productive.sh" \
-  click_script="$PLUGIN_DIR/card.sh productive toggle" \
+  click_script="$PLUGIN_DIR/productive_panel.sh" \
   --subscribe productive system_woke herdr_flock
 
-sketchybar --set productive "${card_popup[@]}" \
-  --subscribe productive mouse.exited.global
+# The overtime suffix is its own item because a label has one colour. Hugs the
+# anchor (negative padding) and hides itself under 40h.
+sketchybar --add item productive_ot left \
+  --set productive_ot drawing=off \
+  icon.drawing=off \
+  label.font="$FONT_TEXT:Bold:12.0" \
+  label.padding_left=0 \
+  label.padding_right=8 \
+  padding_left=-6
+
+# Chips: stripe + code in one bracket. The bracket carries the fill (dark at
+# rest, green when that booking runs); the stripe is the booking's colour and is
+# an item of its own because a sketchybar border is all four sides or none.
+# Hidden until productive_chips.sh has a board to paint from.
+for i in 1 2 3 4; do
+  sketchybar --add item productive_s$i left \
+    --set productive_s$i drawing=off icon.drawing=off label.drawing=off \
+      width=3 padding_left=5 padding_right=0 \
+      background.drawing=on background.height=14 background.corner_radius=1 \
+      background.y_offset=0 \
+    --add item productive_c$i left \
+    --set productive_c$i drawing=off icon.drawing=off \
+      label.font="$FONT_TEXT:Bold:11.5" label.color="$FG" \
+      label.padding_left=7 label.padding_right=8 \
+    --add bracket productive_b$i productive_s$i productive_c$i \
+    --set productive_b$i drawing=off \
+      background.color=0xff16161e background.corner_radius=4 background.height=22
+done
 
 ##### Right side, added right-to-left #####
 

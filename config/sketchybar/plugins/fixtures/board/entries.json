@@ -1,0 +1,138 @@
+[
+ {
+  "id": "5001",
+  "date": "2026-11-02",
+  "minutes": 300,
+  "note": "",
+  "service_id": "1001",
+  "task_id": null
+ },
+ {
+  "id": "5002",
+  "date": "2026-11-02",
+  "minutes": 180,
+  "note": "",
+  "service_id": "3001",
+  "task_id": null
+ },
+ {
+  "id": "5003",
+  "date": "2026-11-02",
+  "minutes": 120,
+  "note": "",
+  "service_id": "2001",
+  "task_id": null
+ },
+ {
+  "id": "5004",
+  "date": "2026-11-03",
+  "minutes": 360,
+  "note": "",
+  "service_id": "1001",
+  "task_id": null
+ },
+ {
+  "id": "5005",
+  "date": "2026-11-03",
+  "minutes": 180,
+  "note": "",
+  "service_id": "2001",
+  "task_id": null
+ },
+ {
+  "id": "5006",
+  "date": "2026-11-03",
+  "minutes": 90,
+  "note": "",
+  "service_id": "3001",
+  "task_id": null
+ },
+ {
+  "id": "5007",
+  "date": "2026-11-04",
+  "minutes": 240,
+  "note": "",
+  "service_id": "1001",
+  "task_id": null
+ },
+ {
+  "id": "5008",
+  "date": "2026-11-04",
+  "minutes": 240,
+  "note": "",
+  "service_id": "3002",
+  "task_id": null
+ },
+ {
+  "id": "5009",
+  "date": "2026-11-04",
+  "minutes": 90,
+  "note": "",
+  "service_id": "3001",
+  "task_id": null
+ },
+ {
+  "id": "5010",
+  "date": "2026-11-05",
+  "minutes": 240,
+  "note": "",
+  "service_id": "1001",
+  "task_id": null
+ },
+ {
+  "id": "5012",
+  "date": "2026-11-05",
+  "minutes": 240,
+  "note": "",
+  "service_id": "2001",
+  "task_id": null
+ },
+ {
+  "id": "5013",
+  "date": "2026-11-05",
+  "minutes": 120,
+  "note": "",
+  "service_id": "3001",
+  "task_id": null
+ },
+ {
+  "id": "5011",
+  "date": "2026-11-05",
+  "minutes": 10,
+  "note": "",
+  "service_id": "3003",
+  "task_id": null
+ },
+ {
+  "id": "5014",
+  "date": "2026-11-06",
+  "minutes": 134,
+  "note": "",
+  "service_id": "1001",
+  "task_id": null
+ },
+ {
+  "id": "5015",
+  "date": "2026-11-06",
+  "minutes": 222,
+  "note": "",
+  "service_id": "3001",
+  "task_id": null
+ },
+ {
+  "id": "5016",
+  "date": "2026-11-06",
+  "minutes": 120,
+  "note": "",
+  "service_id": "3002",
+  "task_id": null
+ },
+ {
+  "id": "5999",
+  "date": "2026-11-07",
+  "minutes": 0,
+  "note": "",
+  "service_id": "1001",
+  "task_id": null
+ }
+]

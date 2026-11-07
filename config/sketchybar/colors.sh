@@ -85,7 +85,7 @@ export SPACE_IDS="1 2 3 4 5"
 # from drifting apart.
 # caffeine left this set when its click became a direct toggle rather than a
 # card, and cpu left it with the cpu/mem item itself.
-export CARD_ITEMS="meeting productive media wifi herdr claude github clock mic"
+export CARD_ITEMS="meeting media wifi herdr claude github clock mic"
 export CARD_ROWS=8
 
 # The events that stand in for the global click sketchybar does not have.

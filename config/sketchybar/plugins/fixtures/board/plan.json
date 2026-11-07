@@ -1,0 +1,38 @@
+[
+ {
+  "project": "vbrb-0001-medical-costs-platform",
+  "project_id": "p1",
+  "budget": "feature-flags",
+  "deal_id": "d1",
+  "booked_role": "Senior Architect",
+  "booked_service_id": "1001",
+  "service_id": "1001",
+  "service": "Senior Architect",
+  "uses": 9,
+  "on_budget": true
+ },
+ {
+  "project": "vbrb-0001-medical-costs-platform",
+  "project_id": "p1",
+  "budget": "partnership-2027",
+  "deal_id": "d2",
+  "booked_role": "Senior Architect",
+  "booked_service_id": "1002",
+  "service_id": "1002",
+  "service": "Senior Architect",
+  "uses": 0,
+  "on_budget": true
+ },
+ {
+  "project": "thea-0001-mobile-app",
+  "project_id": "p2",
+  "budget": "mobile-app",
+  "deal_id": "d3",
+  "booked_role": "Senior Architect",
+  "booked_service_id": "2001",
+  "service_id": "2001",
+  "service": "Senior Architect",
+  "uses": 9,
+  "on_budget": true
+ }
+]

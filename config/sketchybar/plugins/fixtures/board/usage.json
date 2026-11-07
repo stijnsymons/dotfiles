@@ -1,0 +1,56 @@
+[
+ {
+  "service_id": "1001",
+  "uses": 9,
+  "project": "vbrb-0001-medical-costs-platform",
+  "project_id": "p1",
+  "deal_id": "d1",
+  "budget": "feature-flags",
+  "service": "Senior Architect"
+ },
+ {
+  "service_id": "1002",
+  "uses": 9,
+  "project": "vbrb-0001-medical-costs-platform",
+  "project_id": "p1",
+  "deal_id": "d2",
+  "budget": "partnership-2027",
+  "service": "Senior Architect"
+ },
+ {
+  "service_id": "2001",
+  "uses": 9,
+  "project": "thea-0001-mobile-app",
+  "project_id": "p2",
+  "deal_id": "d3",
+  "budget": "mobile-app",
+  "service": "Senior Architect"
+ },
+ {
+  "service_id": "3001",
+  "uses": 9,
+  "project": "nove-internal",
+  "project_id": "p3",
+  "deal_id": "d4",
+  "budget": "general",
+  "service": "mx-mana"
+ },
+ {
+  "service_id": "3002",
+  "uses": 9,
+  "project": "nove-internal",
+  "project_id": "p3",
+  "deal_id": "d4",
+  "budget": "general",
+  "service": "mx-trai"
+ },
+ {
+  "service_id": "3003",
+  "uses": 9,
+  "project": "nove-internal",
+  "project_id": "p3",
+  "deal_id": "d4",
+  "budget": "general",
+  "service": "mx-busdev"
+ }
+]

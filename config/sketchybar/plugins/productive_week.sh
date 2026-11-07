@@ -16,6 +16,10 @@
 # API call. It never changes, so it is memoised next to the week cache rather
 # than bought again every refresh.
 #
+# The same clipped figure is also kept PER BOOKED SERVICE (booked_by_service),
+# because productive_board.sh shows tracked-over-booked per booking and must not
+# redo this arithmetic: the total below is the sum of those entries.
+#
 # Cached because a weekly total does not move minute to minute, and
 # productive.sh's 60s tick must not spend three round trips on one.
 
@@ -36,7 +40,8 @@ WEEK="$(date +%G-W%V)"
 # Sunday-evening refresh stays "fresh" past midnight and the card would spend
 # the first quarter of an hour of the new week quoting the old one's total.
 if [ -s "$CACHE" ] && [ "$(( $(date +%s) - $(stat -f %m "$CACHE") ))" -lt "$TTL" ] \
-   && [ "$(jq -r '.week // ""' "$CACHE" 2>/dev/null)" = "$WEEK" ]; then
+   && [ "$(jq -r '.week // ""' "$CACHE" 2>/dev/null)" = "$WEEK" ] \
+   && jq -e 'has("booked_by_service")' "$CACHE" >/dev/null 2>&1; then
   exit 0
 fi
 
@@ -59,7 +64,7 @@ printf '%s' "$BOOKINGS" | jq -e '.data' >/dev/null 2>&1 || exit 0
 # jq's gmtime puts the weekday at index 6, 0 = Sunday, so 1..5 is Mon-Fri.
 # Dates are parsed as UTC midnight throughout, which keeps a DST boundary
 # inside the week from shifting a day across the 86400 steps.
-BOOKED="$(printf '%s' "$BOOKINGS" | jq --arg mon "$MON" --arg sun "$SUN" '
+BYSVC="$(printf '%s' "$BOOKINGS" | jq -c --arg mon "$MON" --arg sun "$SUN" '
   def day($s): $s | strptime("%Y-%m-%d") | mktime;
   def wdays($a; $b):
     if $b < $a then 0
@@ -67,21 +72,27 @@ BOOKED="$(printf '%s' "$BOOKINGS" | jq --arg mon "$MON" --arg sun "$SUN" '
            | ($a + . * 86400) | gmtime | .[6] | select(. >= 1 and . <= 5) ] | length
     end;
   day($mon) as $w0 | day($sun) as $w1
-  | [ .data[]?.attributes
-      | select((.canceled // false) == false)
-      | select((.rejected // false) == false)
-      | select((.draft // false) == false)
-      | select((.total_working_days // 0) > 0)
-      | ((.total_time // 0) / .total_working_days) as $per_day
-      | wdays(([day(.started_on), $w0] | max); ([day(.ended_on), $w1] | min)) * $per_day ]
-  | add // 0 | round' 2>/dev/null)"
+  | reduce ( .data[]?
+      | select((.attributes.canceled // false) == false)
+      | select((.attributes.rejected // false) == false)
+      | select((.attributes.draft // false) == false)
+      | select((.attributes.total_working_days // 0) > 0)
+      | .attributes as $a
+      | (($a.total_time // 0) / $a.total_working_days) as $per_day
+      | { s: (.relationships.service.data.id // ""),
+          m: (wdays(([day($a.started_on), $w0] | max); ([day($a.ended_on), $w1] | min)) * $per_day) } )
+    as $b ({}; .[$b.s] = ((.[$b.s] // 0) + $b.m) | .[$b.s] |= round)' 2>/dev/null)"
+printf '%s' "$BYSVC" | jq -e 'type == "object"' >/dev/null 2>&1 || exit 0
+# Summing the per-service ROUNDED figures can differ from rounding the sum by a
+# minute or two; the booked total is a weekly headline, so that is noise.
+BOOKED="$(printf '%s' "$BYSVC" | jq '[.[]] | add // 0')"
 case "$BOOKED" in ''|*[!0-9]*) exit 0 ;; esac
 
 # Write-then-rename, same reason as productive_plan.sh: redirecting into $CACHE
 # truncates it first, so a failing jq would leave an empty file that never
 # passes `[ -s ]` again and refetches on every tick forever.
 jq -nc --arg week "$WEEK" --arg from "$MON" --arg to "$SUN" --arg through "$TODAY" \
-       --argjson logged "$LOGGED" --argjson booked "$BOOKED" \
+       --argjson logged "$LOGGED" --argjson booked "$BOOKED" --argjson bysvc "$BYSVC" \
   '{week: $week, from: $from, to: $to, through: $through,
-    logged_minutes: $logged, booked_minutes: $booked}' \
+    logged_minutes: $logged, booked_minutes: $booked, booked_by_service: $bysvc}' \
   > "$CACHE.tmp.$$" 2>/dev/null && mv "$CACHE.tmp.$$" "$CACHE" || rm -f "$CACHE.tmp.$$"

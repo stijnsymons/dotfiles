@@ -1,0 +1,7 @@
+{
+ "vbrb-0001-medical-costs-platform/feature-flags": "FLAG",
+ "thea-0001-mobile-app/mobile-app": "THEA",
+ "mx-mana": "MANA",
+ "mx-trai": "TRAI",
+ "mx-busdev": "BUSD"
+}

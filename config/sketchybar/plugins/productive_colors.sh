@@ -22,3 +22,29 @@ timer_color() {
   case "${3:-}" in "$VIOLET_TASK") printf '%s' "$VIOLET"; return ;; esac
   case "$1" in "$INTERNAL_PROJECT") printf '%s' "$GREEN" ;; *) printf '%s' "$BLUE" ;; esac
 }
+
+# --- booking identity colours -------------------------------------------------
+# The timer rule above answers "what is the whole bar's state"; this answers
+# "which booking is this", for the chips, panel rows and day columns, which all
+# have to show the same colour for the same booking (productive_board.sh puts
+# the result in the board JSON so no UI re-derives it).
+#
+# GREEN and RED are never handed out: green means "timing now" and red means
+# "nothing is timing", so a booking in either would read as state.
+#
+# A hash of the booking key picks the slot, so a booking keeps its colour from
+# week to week without anything stored. The override map pins the ones that
+# matter (mx-mana, mx-trai), and the slots they pin are left out of the hash
+# pool, so an unrelated booking can never be mistaken for them.
+booking_color() { # <key> -> 0xAARRGGBB
+  case "$1" in
+    mx-mana) printf '%s' "$YELLOW"; return ;;
+    mx-trai) printf '%s' "$VIOLET"; return ;;
+  esac
+  local pool=("$BLUE" "$ORANGE" "$AQUA" "$PINK") h
+  h="$(printf '%s' "$1" | cksum | cut -d' ' -f1)"
+  printf '%s' "${pool[$((h % ${#pool[@]}))]}"
+}
+
+# <key> -> "#rrggbb": the form a Swift/HTML UI reads (drops the 0xAA alpha).
+booking_hex() { local c; c="$(booking_color "$1")"; printf '#%s' "${c:4}"; }

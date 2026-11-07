@@ -4,6 +4,7 @@
 #
 #   productive_plan.sh
 #   productive_plan.sh --plan <services.json> <usage.json>
+#   productive_plan.sh --usage <entries.json> <services.json>
 #
 # Two steps, because neither source alone is enough: `productive bookings`
 # gives service ids with no project attribution, and the catalog maps projects
@@ -73,16 +74,18 @@ plan_usage() { # plan_usage <entries-json> <services-payload>
     ($svc.included // []) as $inc
     | (reduce ($inc[] | select(.type=="projects")) as $p ({}; .[$p.id] = $p.attributes.name)) as $proj
     | (reduce ($inc[] | select(.type=="deals"))    as $d ({}; .[$d.id] = ($d.relationships.project.data.id // ""))) as $deal
+    | (reduce ($inc[] | select(.type=="deals"))    as $d ({}; .[$d.id] = ($d.attributes.name // ""))) as $dname
     | (reduce ($svc.data[]?) as $s ({};
         ($s.relationships.deal.data.id // "") as $did
         | .[$s.id] = { project: ($proj[ $deal[$did] // "" ] // ""),
                        project_id: ($deal[$did] // ""),
                        deal_id: $did,
+                       budget: ($dname[$did] // ""),
                        service: ($s.attributes.name // "") })) as $map
     | [ $entries[]? | .service_id | select(. != null) ]
     | group_by(.)
     | map({ service_id: .[0], uses: length })
-    | map(. + ($map[.service_id] // {project:"", project_id:"", deal_id:"", service:""}))
+    | map(. + ($map[.service_id] // {project:"", project_id:"", deal_id:"", budget:"", service:""}))
     | map(select(.project != ""))'
 }
 
@@ -152,6 +155,14 @@ $(printf '%s' "$rows" | jq -r '[ .[] | select(.on_budget == false)
 PLANEOF
   printf '%s\n' "$rows"
 }
+
+# --usage: the same history join, for productive_board.sh, which needs the
+# budget NAME of every service you tracked this week (budget is the one field
+# the planning rows already had and this join did not carry).
+if [ "${1:-}" = "--usage" ]; then
+  plan_usage "$(cat "${2:?--usage needs an entries array}")" "$(cat "${3:?--usage needs a services payload}")"
+  exit 0
+fi
 
 if [ "${1:-}" = "--plan" ]; then
   plan_rows "$(plan_booked < "${2:?--plan needs a services payload}")" \

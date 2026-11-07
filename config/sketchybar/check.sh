@@ -326,6 +326,28 @@ PICO="$(sketchybar --query productive 2>/dev/null | jq -r '.icon.color')"
 case "$PICO" in "$RED"|"$GREEN"|"$BLUE"|"$VIOLET"|"$FG_DIM") ok "icon colour $PICO from palette" ;;
                 *) bad "icon colour not from palette (got '$PICO')" ;; esac
 
+# The timer widget around the anchor: four chips (stripe + code + bracket), the
+# overtime item, and the panel the anchor opens. Names carry no dot on purpose -
+# sketchybar reads "a.b" in a bracket member as a popup of a, and the bracket
+# silently fails to build.
+for i in 1 2 3 4; do
+  for it in productive_s$i productive_c$i productive_b$i; do
+    sketchybar --query "$it" >/dev/null 2>&1 || bad "$it missing (bracket members must not contain a dot)"
+  done
+done
+sketchybar --query productive_ot >/dev/null 2>&1 && ok "chips, brackets and overtime item exist" || bad "productive_ot missing"
+sketchybar --query productive 2>/dev/null | jq -r '.scripting.click_script' | grep -q productive_panel.sh \
+  && ok "anchor click opens the panel" || bad "anchor click does not open the panel"
+if [ -x "$CONFIG_DIR/bin/productive-panel" ]; then
+  PPNG="$(mktemp -d)/panel.png"
+  PRODUCTIVE_BOARD="$CONFIG_DIR/plugins/fixtures/productive-board.json" \
+    timeout 20 "$CONFIG_DIR/bin/productive-panel" --screenshot "$PPNG" >/dev/null 2>&1
+  [ -s "$PPNG" ] && ok "panel renders the fixture board ($(wc -c <"$PPNG" | tr -d ' ') bytes)" \
+                 || bad "panel produced no image from the fixture board"
+else
+  bad "bin/productive-panel not built"
+fi
+
 echo "launchd PATH:"
 # launchd hands sketchybar /usr/bin:/bin and nothing else. colors.sh is the one
 # place that repairs it, so every script that sources it finds jq, gws and the
@@ -643,6 +665,81 @@ is "the unstartable booking opens the timesheet" \
    "$(printf '%s\n' "$PCR" | awk -F'\t' '$3 ~ /newly-booked/ {print $4}')" \
    "$CONFIG_DIR/plugins/brave_tab.sh 3"
 rm -rf "$PP"
+
+# The timer widget's shared board (productive_board.sh), driven through its
+# --build seam with fixtures: the part that decides what both UIs show is pure,
+# the fetching is not, so only the pure half is asserted - no network, no model,
+# no timer started. Fixture week is 2026-W45 (Mon 11-02), "today" is Sat 11-07
+# with a timer running on feature-flags.
+BF="$CONFIG_DIR/plugins/fixtures/board"
+BBUILD() { "$CONFIG_DIR/plugins/productive_board.sh" --build "${1:-$BF}" 2026-11-07 2026-11-02 2>/dev/null; }
+BO="$(BBUILD)"
+bq() { printf '%s' "$BO" | jq -r "$1"; }
+is "board: committed fixture is what the builder emits" \
+   "$(printf '%s' "$BO" | jq -S .)" "$(jq -S . "$CONFIG_DIR/plugins/fixtures/productive-board.json")"
+is "board: every plan booking plus every tracked one (6)" "$(bq '.bookings|length')" "6"
+is "board: two budgets on one project stay two bookings" \
+   "$(bq '[.bookings[]|select(.project|startswith("vbrb"))|.budget]|sort|join(",")')" "feature-flags,partnership-2027"
+is "board: sorted by tracked desc" \
+   "$(bq '[.bookings[].tracked_minutes]|. == (sort|reverse)')" "true"
+is "board: running timer run is added to its booking (1274 entries + 58)" \
+   "$(bq '.bookings[]|select(.budget=="feature-flags")|.tracked_minutes')" "1332"
+is "board: total, target, overtime" "$(bq '[.total_minutes,.target_minutes,.overtime_minutes]|join("/")')" "2944/2400/544"
+is "board: untracked booked budget shows 0 tracked and its booked minutes" \
+   "$(bq '.bookings[]|select(.budget=="partnership-2027")|[.tracked_minutes,.booked_minutes]|join("/")')" "0/240"
+is "board: internal work has no booked minutes" \
+   "$(bq '[.bookings[]|select(.project=="nove-internal")|.booked_minutes]|unique|tostring')" "[null]"
+is "board: each internal service is its own booking" \
+   "$(bq '[.bookings[]|select(.project=="nove-internal")|.key]|sort|join(",")')" "mx-busdev,mx-mana,mx-trai"
+is "board: chips are 3 recent + pinned last" \
+   "$(bq '.chips|length') $(bq '.chips[-1]')" "4 mx-mana"
+is "board: chip flag matches the chip list" \
+   "$(bq '[.bookings[]|select(.chip)|.key]|sort|join(",")') " "$(bq '.chips|sort|join(",")') "
+is "board: running booking leads the chips" "$(bq '.chips[0]==.running.key')" "true"
+is "board: Fri minutes grouped per booking" "$(bq '.days[4].minutes|[.[]]|add')" "476"
+is "board: running run lands on today's column" \
+   "$(bq '.days[5].minutes|[.[]]|add')" "58"
+is "board: day span ignores pre-05:00 and idle samples" \
+   "$(bq '[.days[1].start,.days[1].end]|join("-")')" "08:32-22:00"
+is "board: a day with no activity has null span" "$(bq '.days[6]|[.start,.end]|tostring')" "[null,null]"
+is "board: seven days Mon..Sun" "$(bq '[.days[].dow]|join(",")')" "Mon,Tue,Wed,Thu,Fri,Sat,Sun"
+# Colours: never the state colours, pinned ones pinned, stable, and no booking
+# shares a colour with a pinned one it is not.
+is "board: no booking is green or red" \
+   "$(bq '[.bookings[].color]|map(select(.=="#9ece6a" or .=="#f7768e"))|length')" "0"
+is "board: mx-mana yellow, mx-trai violet" \
+   "$(bq '[.bookings[]|select(.key=="mx-mana" or .key=="mx-trai")|.color]|join(",")')" "#e0af68,#9d7cd8"
+is "board: only the pinned two use yellow/violet" \
+   "$(bq '[.bookings[]|select(.color=="#e0af68" or .color=="#9d7cd8")|.key]|sort|join(",")')" "mx-mana,mx-trai"
+is "board: a booking keeps its colour between builds" "$(BBUILD | jq -c '[.bookings[].color]')" "$(bq '[.bookings[].color]|tojson')"
+# Codes: cached ones are used, a booking with none gets the budget's first four
+# letters, and a collision never produces two equal chips.
+is "board: cached code used" "$(bq '.bookings[]|select(.key=="mx-mana")|.code')" "MANA"
+is "board: no cache -> first 4 letters of the budget" "$(bq '.bookings[]|select(.budget=="partnership-2027")|.code')" "PART"
+is "board: codes unique" "$(bq '[.bookings[].code]|(unique|length)==length')" "true"
+PB="$CONFIG_DIR/plugins/productive_board.sh"
+is "code: a free well-formed candidate wins" "$("$PB" --code feature-flags FLAG "THEA")" "FLAG"
+is "code: a taken candidate falls back to the budget" "$("$PB" --code feature-flags FLAG "FLAG")" "FEAT"
+is "code: fallback collision gets a digit" "$("$PB" --code feature-flags "" "FEAT")" "FEA2"
+is "code: a malformed candidate is ignored" "$("$PB" --code mobile-app "mobile" "")" "MOBI"
+is "code: a short budget is padded" "$("$PB" --code ab "" "")" "ABXX"
+# States: no timer file content is UNKNOWN (never idle), not running is idle.
+BT="$(mktemp -d)"; cp -R "$BF"/. "$BT"/
+printf '{"running":false}' > "$BT/timer.json"
+is "board: running:false -> idle, no running block" "$(BBUILD "$BT" | jq -r '[.state,(.running|tostring)]|join("/")')" "idle/null"
+is "board: idle adds no live minutes" "$(BBUILD "$BT" | jq -r '.total_minutes')" "2886"
+printf '{}' > "$BT/timer.json"
+is "board: no timer data -> unknown, not idle" "$(BBUILD "$BT" | jq -r '.state')" "unknown"
+rm -rf "$BT"
+# Switching: the decision only. Never calls the API here.
+BS="$(mktemp -d)"
+printf '{"running":true,"timer_id":"9","service_id":"1001"}' > "$BS/run.json"
+printf '{"running":false}' > "$BS/idle.json"
+SW="$CONFIG_DIR/plugins/productive_switch.sh"
+is "switch: clicking the running booking is a no-op" "$("$SW" --plan "$BS/run.json" 1001)" "noop"
+is "switch: another booking while running stops then starts" "$("$SW" --plan "$BS/run.json" 2001)" "stop+start"
+is "switch: nothing running just starts" "$("$SW" --plan "$BS/idle.json" 2001)" "start"
+rm -rf "$BS"
 
 # Media's actionable rows. This asserted exactly ONE, the transport control, at
 # the end - both facts are now wrong by design. The card grew an "Add to <year>"

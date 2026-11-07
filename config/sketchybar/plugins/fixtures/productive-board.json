@@ -1,0 +1,176 @@
+{
+  "week": "2026-W45",
+  "from": "2026-11-02",
+  "to": "2026-11-08",
+  "generated_at": "2026-11-07T12:00:00",
+  "state": "running",
+  "running": {
+    "key": "vbrb-0001-medical-costs-platform/feature-flags",
+    "service_id": "1001",
+    "elapsed_minutes": 72,
+    "started_at": "2026-11-07T14:51:02.000+01:00"
+  },
+  "total_minutes": 2944,
+  "target_minutes": 2400,
+  "overtime_minutes": 544,
+  "bookings": [
+    {
+      "key": "vbrb-0001-medical-costs-platform/feature-flags",
+      "project": "vbrb-0001-medical-costs-platform",
+      "budget": "feature-flags",
+      "service_id": "1001",
+      "tracked_minutes": 1332,
+      "booked_minutes": 1200,
+      "pinned": false,
+      "name": "vbrb-0001-medical-costs-platform · feature-flags",
+      "chip": true,
+      "code": "FLAG",
+      "color": "#ff9e64"
+    },
+    {
+      "key": "mx-mana",
+      "project": "nove-internal",
+      "budget": "mx-mana",
+      "service_id": "3001",
+      "tracked_minutes": 702,
+      "booked_minutes": null,
+      "pinned": true,
+      "name": "nove-internal · mx-mana",
+      "chip": true,
+      "code": "MANA",
+      "color": "#e0af68"
+    },
+    {
+      "key": "thea-0001-mobile-app/mobile-app",
+      "project": "thea-0001-mobile-app",
+      "budget": "mobile-app",
+      "service_id": "2001",
+      "tracked_minutes": 540,
+      "booked_minutes": 720,
+      "pinned": false,
+      "name": "thea-0001-mobile-app · mobile-app",
+      "chip": true,
+      "code": "THEA",
+      "color": "#7aa2f7"
+    },
+    {
+      "key": "mx-trai",
+      "project": "nove-internal",
+      "budget": "mx-trai",
+      "service_id": "3002",
+      "tracked_minutes": 360,
+      "booked_minutes": null,
+      "pinned": false,
+      "name": "nove-internal · mx-trai",
+      "chip": true,
+      "code": "TRAI",
+      "color": "#9d7cd8"
+    },
+    {
+      "key": "mx-busdev",
+      "project": "nove-internal",
+      "budget": "mx-busdev",
+      "service_id": "3003",
+      "tracked_minutes": 10,
+      "booked_minutes": null,
+      "pinned": false,
+      "name": "nove-internal · mx-busdev",
+      "chip": false,
+      "code": "BUSD",
+      "color": "#7dcfff"
+    },
+    {
+      "key": "vbrb-0001-medical-costs-platform/partnership-2027",
+      "project": "vbrb-0001-medical-costs-platform",
+      "budget": "partnership-2027",
+      "service_id": "1002",
+      "tracked_minutes": 0,
+      "booked_minutes": 240,
+      "pinned": false,
+      "name": "vbrb-0001-medical-costs-platform · partnership-2027",
+      "chip": false,
+      "code": "PART",
+      "color": "#7aa2f7"
+    }
+  ],
+  "chips": [
+    "vbrb-0001-medical-costs-platform/feature-flags",
+    "mx-trai",
+    "thea-0001-mobile-app/mobile-app",
+    "mx-mana"
+  ],
+  "days": [
+    {
+      "date": "2026-11-02",
+      "dow": "Mon",
+      "start": "08:38",
+      "end": "21:26",
+      "minutes": {
+        "mx-mana": 180,
+        "thea-0001-mobile-app/mobile-app": 120,
+        "vbrb-0001-medical-costs-platform/feature-flags": 300
+      }
+    },
+    {
+      "date": "2026-11-03",
+      "dow": "Tue",
+      "start": "08:32",
+      "end": "22:00",
+      "minutes": {
+        "mx-mana": 90,
+        "thea-0001-mobile-app/mobile-app": 180,
+        "vbrb-0001-medical-costs-platform/feature-flags": 360
+      }
+    },
+    {
+      "date": "2026-11-04",
+      "dow": "Wed",
+      "start": "08:22",
+      "end": "19:42",
+      "minutes": {
+        "mx-mana": 90,
+        "mx-trai": 240,
+        "vbrb-0001-medical-costs-platform/feature-flags": 240
+      }
+    },
+    {
+      "date": "2026-11-05",
+      "dow": "Thu",
+      "start": "08:36",
+      "end": "21:16",
+      "minutes": {
+        "mx-busdev": 10,
+        "mx-mana": 120,
+        "thea-0001-mobile-app/mobile-app": 240,
+        "vbrb-0001-medical-costs-platform/feature-flags": 240
+      }
+    },
+    {
+      "date": "2026-11-06",
+      "dow": "Fri",
+      "start": "08:37",
+      "end": "22:25",
+      "minutes": {
+        "mx-mana": 222,
+        "mx-trai": 120,
+        "vbrb-0001-medical-costs-platform/feature-flags": 134
+      }
+    },
+    {
+      "date": "2026-11-07",
+      "dow": "Sat",
+      "start": "14:51",
+      "end": "15:49",
+      "minutes": {
+        "vbrb-0001-medical-costs-platform/feature-flags": 58
+      }
+    },
+    {
+      "date": "2026-11-08",
+      "dow": "Sun",
+      "start": null,
+      "end": null,
+      "minutes": {}
+    }
+  ]
+}

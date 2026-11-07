@@ -9,18 +9,18 @@
 # and treats "no parseable JSON" as UNKNOWN, not as "not timing". A dropped
 # Wi-Fi packet must never fake the alarm.
 #
+# This item is the ANCHOR of the timer widget: state glyph + elapsed time (or the
+# red alarm), plus an amber overtime suffix (productive.ot) once the week passes
+# 40h. Next to it sit four chips (productive_chips.sh), one booking each, and a
+# click on the anchor opens the native panel (productive_panel.sh). It used to be
+# a hover card; the card file is kept for check.sh but no longer wired in.
+#
 # Glyphs are UTF-8 octal escapes so no encoding step can drop them:
 # U+F017 clock (timing), U+F071 warning triangle (not timing).
 set -u
 
 source "$CONFIG_DIR/colors.sh"
 source "$CONFIG_DIR/plugins/fit.sh"
-# Hover dispatch, before anything expensive: sketchybar invokes this same
-# script for every subscribed event. Leaving the bar closes the card; any other
-# event is a routine tick, which is also what polices a card left open by a
-# missed mouse.exited.
-card_dispatch productive
-
 CACHE="$SB_CACHE_DIR/productive.json"
 STALE_AFTER=420          # seconds; past this the cache is no longer evidence
 
@@ -67,42 +67,37 @@ fetch() {
   printf '%s' "$out"
 }
 
-source "$CONFIG_DIR/plugins/productive_colors.sh"
+source "$CONFIG_DIR/plugins/productive_chips.sh"
 
-set_running() { sketchybar --set "$NAME" drawing=on \
-                  icon="$CLOCK" icon.color="${2:-$GREEN}" label="$(fit_label "$NAME" "$1")" label.color="${2:-$FG}"; }
-set_idle()    { sketchybar --set "$NAME" drawing=on \
-                  icon="$WARN"  icon.color="$RED"   label="$(fit_label "$NAME" "not timing")" label.color="$RED"; }
-set_unknown() { sketchybar --set "$NAME" drawing=on \
+# fit_label reserves room for the four chips to its right (a code is 4-5 chars at
+# 11.5pt bold plus the stripe and padding), or a long timer label would push the
+# last chip under the notch.
+CHIPS_RESERVE=${CHIPS_RESERVE:-230}
+IDLE_TINT=0x29f7768e     # RED at 16%: the alarm reads as a patch, not just a glyph
+
+set_running() { sketchybar --set "$NAME" drawing=on background.drawing=off \
+                  icon="$CLOCK" icon.color="$GREEN" label="$(fit_label "$NAME" "$1" "$CHIPS_RESERVE")" label.color="$GREEN"; }
+set_idle()    { sketchybar --set "$NAME" drawing=on background.drawing=on background.color="$IDLE_TINT" \
+                  icon="$WARN"  icon.color="$RED"   label="$(fit_label "$NAME" "not timing" "$CHIPS_RESERVE")" label.color="$RED"; }
+set_unknown() { sketchybar --set "$NAME" drawing=on background.drawing=off \
                   icon="$CLOCK" icon.color="$FG_DIM" label="--" label.color="$FG_DIM"; }
 
 render() {        # $1 = json, $2 = age of that json in seconds
-  local json=$1 age=${2:-0} what elapsed
+  local json=$1 age=${2:-0} elapsed
 
   if [ "$(printf '%s' "$json" | jq -r '.running')" != "true" ]; then
-    set_idle
+    STATE=idle; set_idle
     return
   fi
 
-  local project task service
-  { IFS= read -r what; IFS= read -r elapsed; IFS= read -r project; IFS= read -r task; IFS= read -r service; } <<JQEOF
-$(printf '%s' "$json" | jq -r '
-   ( [ (.project // empty), (.service // empty), (.task // empty) ]
-       | map(select(length > 0)) | join(" · ") ),
-   ( .elapsed_minutes // 0 ),
-   ( .project // "" ),
-   ( .task // "" ),
-   ( .service // "" )')
-JQEOF
-
+  elapsed="$(printf '%s' "$json" | jq -r '.elapsed_minutes // 0')"
   # A running clock keeps running: age the cached figure forward so a served
-  # cache never shows a stale number.
-  # ${VAR:-}: the reads above never ran if the here-document itself could not be
-  # created, and a missing field must cost the colour, not the whole repaint.
-  set_running "${what:-timing} $(fmt $(( ${elapsed:-0} + age / 60 )))" \
-              "$(timer_color "${project:-}" "${task:-}" "${service:-}")"
+  # cache never shows a stale number. The booking's name is on the chip and in
+  # the panel, so the anchor says only how long.
+  STATE=running; set_running "$(fmt $(( ${elapsed:-0} + age / 60 )))"
 }
 
+STATE=unknown
 if JSON="$(fetch)"; then
   render "$JSON" 0
 elif [ -f "$CACHE" ]; then
@@ -112,3 +107,10 @@ elif [ -f "$CACHE" ]; then
 else
   set_unknown
 fi
+
+# The widget's shared board (chips, panel, herdr mod). After the repaint, so a
+# slow first-sight short-code call to the model can never delay the bar; the
+# board's own heavy work is cached, so on most ticks this is a few jq calls.
+"$CONFIG_DIR/plugins/productive_board.sh" >/dev/null 2>&1 || true
+# Chips and the overtime suffix read that board, so they paint after it.
+productive_chips "$STATE"
