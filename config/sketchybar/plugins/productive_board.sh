@@ -70,7 +70,7 @@ ask_model() {
   command -v "${CLAUDE_BIN:-claude}" >/dev/null && command -v timeout >/dev/null || return 1
   local out
   out="$(timeout 15 "${CLAUDE_BIN:-claude}" -p --model haiku \
-    "Reply with ONLY a recognisable 4-letter UPPERCASE code (A-Z) for the time-tracking booking below, as a person would abbreviate it: feature-flags -> FLAG, doccle-pay-integration -> DPAY. No other words. Do not use any of these codes: ${3:-none}. Project: $1. Budget: $2." \
+    "Reply with ONLY a recognisable 4-letter UPPERCASE code (A-Z) for the time-tracking booking below, abbreviated from the BUDGET name as a person would (style only, never reuse: customer-portal -> CPRT, invoice-export -> INVX). No other words. Do not use any of these codes: ${3:-none} CPRT INVX. Project: $1. Budget: $2." \
     </dev/null 2>/dev/null | head -1 | tr -d '[:space:]' | tr 'a-z' 'A-Z')"
   case "$out" in [A-Z][A-Z][A-Z][A-Z]) printf '%s' "$out" ;; *) return 1 ;; esac
 }
@@ -223,7 +223,11 @@ board_make() {
     [ -n "$key" ] || continue
     cached="$(printf '%s' "$codes" | jq -r --arg k "$key" '.[$k] // empty')"
     cand="$cached"; asked=0
-    if [ -z "$cached" ] && [ "$LIVE" = 1 ] && [ "$calls" -lt "$MODEL_CALLS_MAX" ]; then
+    # Internal services are named mx-<what>; the <what> IS the code people know
+    # (mx-mana -> MANA). The model only ever saw "nove-internal" and answered NINT.
+    if [ "$project" = "$INTERNAL_PROJECT" ]; then
+      budget="${budget#mx-}"; cand="$(printf '%s' "$budget" | tr -cd 'A-Za-z' | tr 'a-z' 'A-Z' | cut -c1-4)"; cached="$cand"
+    elif [ -z "$cached" ] && [ "$LIVE" = 1 ] && [ "$calls" -lt "$MODEL_CALLS_MAX" ]; then
       calls=$((calls + 1)); asked=1
       cand="$(ask_model "$project" "$budget" "$taken_codes")" || cand=""
     fi
