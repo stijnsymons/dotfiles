@@ -59,6 +59,8 @@ productive_chips() {
     args+=(--set productive_ot drawing=off)
   fi
 
+  # A repaint ends any hover widening (productive_chip_hover.sh): code label, resting paddings.
+  rm -f "$SB_CACHE_DIR"/productive-chip-*.rest
   i=0
   while IFS=$'\t' read -r code color pin key svc; do
     i=$((i + 1)); [ "$i" -le "$CHIP_SLOTS" ] || break
@@ -74,8 +76,8 @@ productive_chips() {
       click="$CONFIG_DIR/plugins/productive_panel.sh"
     fi
     args+=(--set "productive_b$i" drawing=on background.color="$fill"
-           --set "productive_s$i" drawing=on background.color="$stripe"
-           --set "productive_c$i" drawing=on label="$lbl" label.color="$fg"
+           --set "productive_s$i" drawing=on background.color="$stripe" padding_left=5
+           --set "productive_c$i" drawing=on label="$lbl" label.color="$fg" padding_left=0
              click_script="$click"
            --set "productive_s$i" click_script="$click"
            --set "productive_b$i" click_script="$click")

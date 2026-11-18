@@ -428,13 +428,16 @@ CO="$(sketchybar --query wifi 2>/dev/null | jq -r '.popup.drawing')$(sketchybar 
 is "opening one card closes the other" "$CO" "offon"
 "$CONFIG_DIR/plugins/card.sh" clock close >/dev/null 2>&1
 
-# Card hover must be gone entirely. The one exception is the timer chips' detail
-# popup (productive_chip_hover.sh), which is deliberate and not a card.
+# Card hover must be gone entirely. The one exception is the timer chips, which
+# widen to their full name on hover (productive_chip_hover.sh) - not a card.
 HW="$(grep -rn "mouse.entered" "$CONFIG_DIR/sketchybarrc" "$CONFIG_DIR/plugins" "$CONFIG_DIR/cards" 2>/dev/null \
   | grep -v 'productive_chip_hover.sh\|--subscribe productive_c\$i' || true)"
 [ -z "$HW" ] && ok "no card hover wiring left (chip popups aside)" || bad "mouse.entered still wired somewhere: $HW"
-CH="$(PRODUCTIVE_BOARD="$CONFIG_DIR/plugins/fixtures/productive-board.json" PRODUCTIVE_DOW=5 CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/productive_chip_hover.sh" --text 1)"
-is "chip hover detail: over target" "$CH" "$(printf 'vbrb-0001-medical-costs-platform · feature-flags\t22h12m of 20h00m planned, over by 2h12m')"
+# 48-char name over a 4-char code: 44 more characters at 6.9pt = 303pt to the left.
+CH="$(PRODUCTIVE_BOARD="$CONFIG_DIR/plugins/fixtures/productive-board.json" CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/productive_chip_hover.sh" --plan 1 FLAG)"
+is "chip hover: full name, shifted left by its extra width" "$CH" "$(printf 'vbrb-0001-medical-costs-platform · feature-flags\t303')"
+is "chip hover: near the left edge the name is cut, not the bar" \
+   "$(PRODUCTIVE_BOARD="$CONFIG_DIR/plugins/fixtures/productive-board.json" CONFIG_DIR="$CONFIG_DIR" "$CONFIG_DIR/plugins/productive_chip_hover.sh" --plan 1 FLAG 100)" "$(printf 'vbrb-0001-medical…\t96')"
 
 echo "outside click:"
 # sketchybar has no global click event, so a click elsewhere is inferred from
